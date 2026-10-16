@@ -1,0 +1,20 @@
+[package]
+name = "video-review"
+version = "0.1.0"
+edition = "2024"
+description = "Video Review: timecoded, scene-range and on-frame review notes on finished cuts"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+dirs = "7.0.0"
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts", "wayland", "x11"] }
+egui = "0.37.0"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+rfd = "0.17.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+sha1 = "0.11.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

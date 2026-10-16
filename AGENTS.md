@@ -1,0 +1,39 @@
+# AGENTS.md
+
+This file provides guidance to AI coding agents when working with code in this repository.
+
+Rust/egui desktop app for timecoded, scene-range and on-frame review notes on finished video cuts. Successor of a removed Flutter app; also coexists with a Python/web version that reads/writes the same files.
+
+## Commands
+
+```sh
+brew install mpv ffmpeg                         # libmpv needed to link/run; ffmpeg at runtime
+cargo run --release -- <folder-or-videos...>    # no args = reopen last session
+cargo test                                      # unit tests live in-file (#[cfg(test)])
+cargo test <name>                               # single test, e.g. cargo test exact_frame_durations
+cargo clippy --all-targets -- -D warnings       # CI gate (macOS, together with cargo test)
+./tools/bundle-macos.sh                         # -> target/release/Video Review.app
+```
+
+`build.rs` adds `/opt/homebrew/lib` or `/usr/local/lib` to the link path if `libmpv.dylib` is there; set `MPV_LIB_DIR` otherwise. Edition 2024. CI installs only mpv, so the ffmpeg scene-detection test silently no-ops there.
+
+## Architecture
+
+- **`main.rs`** → eframe with the **Glow renderer** (required: mpv renders via OpenGL into a texture egui displays). CLI args not starting with `-` are paths.
+- **`review.rs` — `Review`** owns the review state: mpv handle, loaded video list, comments, scene cuts, selection/area/pending in-point, 1-deep undo (delete and done/undone only), prefs (volume/mute/last session in `dirs::config_dir()/video-review/prefs.json`). Issues the mpv commands (`seek … absolute+exact`, `frame-step`); `mpv.rs` only sets `hr-seek=yes` and exposes a generic `command()`. `Review::update()` runs once per frame: drains mpv property events (time-pos, fps, size…), pumps thumbnails, polls scene detection, and every 4 s reloads the notes file if it changed externally or was unreadable. `position()` extrapolates between `time-pos` events while playing (`pos + elapsed * rate`); pausing resets the rate to 1.0. Transient widget state (draft text, inline edit, armed two-step delete, drags, help flag) lives in `ui::App`, not in `Review`.
+- **`mpv.rs`** — hand-written libmpv FFI (client + OpenGL render API). Wakeup callbacks call `ctx.request_repaint()`.
+- **`model.rs`** — data + persistence, JSON-compatible with the other versions (don't change the on-disk format):
+  - `<video>.comments.json` via `CommentStore`. Edits are `Change` values (Put/Text/Done/Remove, keyed by id). `commit()` re-reads the file and re-applies the changes if it changed on disk, so concurrent edits from other app versions aren't lost. `save()` normalizes (sorted by `t_in`, `Area` rounded to 4 decimals, `scenes` as `[first, last]`, `frame_in`/`frame_out` recomputed) and writes atomically via a `.tmp` sidecar. An unparsable file makes the store read-only (never overwritten) and a `.bak` is made before the next write; un-persisted changes wait in `Review::pending`.
+  - `<video>.scenes.json`: ffmpeg scene-score (threshold 0.25, same as other versions) cut detection, cached and invalidated by threshold + video size/mtime. Runs on a thread; only one `Detection` exists at a time and dropping it kills ffmpeg. Notes whose scene numbers exceed the current cut count keep their `t_in`/`t_out` and drop the `scenes` field.
+  - Time: `frame_of(t, fps)` floors with a 1e-3 epsilon to absorb PTS float drift; active-note and scene lookups compare frame indices, range ends are frame-exclusive. Timecodes are non-drop-frame at the rounded nominal rate (29.97 → 30).
+  - `find_ffmpeg()` — GUI apps may lack PATH. Missing ffmpeg: thumbnails spawn no workers, detection reports `ScenesStatus::NoFfmpeg`, UI shows the warning (`ffmpeg_missing` only drives that warning and hides the re-detect button).
+- **`thumbs.rs`** — ffmpeg frame grabs (240 px wide), 3 workers, newest request first, disk cache in `dirs::cache_dir()/video-review/thumbs` keyed by `SHA1(path|size|mtime)`, pruned oldest-first to 2 GB **once per process** at startup. UI widgets call `thumbs.at()`/`gray_at()` directly to enqueue grabs; a `generation` counter drops stale results after switching videos.
+- **`export.rs`** — notes → EDL (DaVinci Resolve markers), FCPXML, Markdown; format chosen by the save-path extension. Frame-exact timecode handling for fractional rates.
+- **`theme.rs`** — palette, fonts (from `assets/fonts`, embedded), Material Icons glyphs.
+- **`ui/`** — `app.rs` (eframe `App`: layout, header/transport, global keyboard shortcuts + `?` help table `GROUPS`, file dialogs, drag-and-drop), `timeline.rs` (filmstrip + ruler, scene/range selection), `stage.rs` (video picture), `panel.rs` (notes list/editor), `pencil.rs` (grease-pencil area/pin marks; `Area` is normalized 0..1, `w == h == 0` is a pin; stroke wobble is seeded from the comment id so it never jitters).
+  - Cross-widget flow: a finished ruler range drag or a stage pin/area placement returns `drafted = true`, which pauses playback and focuses the note composer. `Review::hover_id` is shared by panel, ruler and stage for highlighting; `panel()` runs before the central panel each frame, so it resets `hover_id` and the ruler may override it.
+
+## Conventions
+
+- Everything is English: user-facing strings (errors, dialogs, labels), code and comments. Durations are shown as `"4.0 s"`, decimals with a dot.
+- `tools/make_fonts.py` generates the static Archivo/Source Serif instances (tabular figures frozen in) in `assets/fonts`; regenerate rather than hand-editing fonts.
