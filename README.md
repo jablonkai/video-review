@@ -29,6 +29,22 @@ cargo run --release -- <folder-or-videos...>   # a folder or video files
 ./tools/bundle-macos.sh                        # target/release/Video Review.app
 ```
 
+## macOS installer
+
+```sh
+./tools/make-dmg.sh   # -> target/release/Video Review-0.1.0.dmg
+```
+
+The script builds the `.app` (via `tools/bundle-macos.sh`) and wraps it in a
+drag-to-install disk image containing `Video Review.app`, an `Applications`
+alias, and a ReadMe (hu/en).
+
+The app is **not code-signed** (no Apple Developer ID), so on first launch the
+user must right-click the app and choose **Open**. It needs Homebrew's
+`mpv` and `ffmpeg` at runtime (`brew install mpv ffmpeg`); without them
+playback, thumbnails and scene detection are unavailable, which the app
+reports in its UI.
+
 With no arguments it reopens the last folder/video (`~/Library/Application Support/video-review/prefs.json`).
 Press `?` in the app for the shortcuts.
 
