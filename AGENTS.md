@@ -13,6 +13,7 @@ cargo test                                      # unit tests live in-file (#[cfg
 cargo test <name>                               # single test, e.g. cargo test exact_frame_durations
 cargo clippy --all-targets -- -D warnings       # CI gate (macOS, together with cargo test)
 ./tools/bundle-macos.sh                         # -> target/release/Video Review.app
+./tools/make-dmg.sh                             # -> target/release/Video Review-0.1.0.dmg (drag-to-install .dmg)
 ```
 
 `build.rs` adds `/opt/homebrew/lib` or `/usr/local/lib` to the link path if `libmpv.dylib` is there; set `MPV_LIB_DIR` otherwise. Edition 2024. CI installs only mpv, so the ffmpeg scene-detection test silently no-ops there.
