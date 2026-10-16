@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use egui::text::LayoutJob;
 use egui::{Align, Color32, Frame, Key, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, TextFormat, Ui, UiBuilder, pos2, vec2};
 
+use crate::i18n::{tr, trf, trn};
 use crate::model::secs;
 use crate::review::{Review, SpanMode};
 use crate::theme::{self, Face, font, icon};
@@ -38,15 +39,15 @@ pub fn panel(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
     let done = r.comments.len() - open;
     Frame::NONE.inner_margin(Margin { left: 20, right: 12, top: 14, bottom: 6 }).show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Notes").font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
+            ui.label(RichText::new(tr("panel.notes")).font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
             ui.add_space(4.0);
             if !r.comments.is_empty() {
-                let s = if open == 0 { "all done".to_owned() } else { format!("{open} open") };
+                let s = if open == 0 { tr("panel.all_done") } else { trn("panel.open", open as u64, &[]) };
                 ui.label(RichText::new(s).font(font(Face::Ui, 12.5)).color(theme::MUTED));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if done > 0 {
-                    let label = if r.hide_done { format!("Show done ({done})") } else { "Hide done".into() };
+                    let label = if r.hide_done { trf("panel.show_done", &[("n", &done)]) } else { tr("panel.hide_done") };
                     if quiet_button(ui, &label).clicked() {
                         r.hide_done = !r.hide_done;
                     }
@@ -58,10 +59,7 @@ pub fn panel(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
     if r.comments.is_empty() {
         Frame::NONE.inner_margin(Margin { left: 20, right: 24, top: 8, bottom: 0 }).show(ui, |ui| {
             ui.label(
-                RichText::new(
-                    "No notes yet. Pause the video where you have something to say, \
-                     then start typing or press M.",
-                )
+                RichText::new(tr("panel.empty"))
                 .font(font(Face::Note, 14.0))
                 .color(theme::MUTED),
             );
@@ -102,7 +100,7 @@ fn notices(ui: &mut Ui, r: &mut Review) {
                 ui.allocate_ui_with_layout(vec2(ui.available_width() - 26.0, 20.0), Layout::left_to_right(Align::Center), |ui| {
                     ui.add(egui::Label::new(RichText::new(e).font(font(Face::Ui, 12.5)).color(theme::RED)).wrap());
                 });
-                if icon_button(ui, icon::CLOSE, 14.0, vec2(20.0, 20.0), theme::MUTED, "Close").clicked() {
+                if icon_button(ui, icon::CLOSE, 14.0, vec2(20.0, 20.0), theme::MUTED, &tr("common.close")).clicked() {
                     r.error = None;
                 }
             });
@@ -111,9 +109,9 @@ fn notices(ui: &mut Ui, r: &mut Review) {
             ui.ctx().request_repaint_after(left);
             Frame::NONE.fill(theme::RAISED).corner_radius(5).inner_margin(Margin { left: 12, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(label).font(font(Face::Ui, 12.5)).color(theme::PAPER));
+                    ui.label(RichText::new(tr(label)).font(font(Face::Ui, 12.5)).color(theme::PAPER));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let b = egui::Button::new(RichText::new("Undo").font(font(Face::UiStrong, 12.5)).color(theme::PENCIL)).frame(false);
+                        let b = egui::Button::new(RichText::new(tr("panel.undo")).font(font(Face::UiStrong, 12.5)).color(theme::PENCIL)).frame(false);
                         if ui.add(b).on_hover_text("Cmd+Z").clicked() {
                             r.undo();
                         }
@@ -145,7 +143,7 @@ pub fn icon_button(ui: &mut Ui, glyph: char, size: f32, box_size: egui::Vec2, co
 }
 
 fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
-    ui.label(RichText::new("New note").font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
+    ui.label(RichText::new(tr("panel.new_note")).font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
     ui.add_space(6.0);
     mode_switch(ui, r);
     ui.add_space(4.0);
@@ -172,7 +170,7 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
             let edit = egui::TextEdit::multiline(&mut st.draft)
                 .id(id)
                 .font(font(Face::Note, 15.0))
-                .hint_text(RichText::new("What's wrong here, or what works?").font(font(Face::Note, 15.0)).color(theme::FAINT))
+                .hint_text(RichText::new(tr("panel.hint")).font(font(Face::Note, 15.0)).color(theme::FAINT))
                 .frame(Frame::NONE)
                 .desired_rows(3)
                 .desired_width(f32::INFINITY)
@@ -188,11 +186,11 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
         });
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Enter saves, Shift+Enter starts a new line").font(font(Face::Ui, 11.5)).color(theme::FAINT));
+        ui.label(RichText::new(tr("panel.enter_hint")).font(font(Face::Ui, 11.5)).color(theme::FAINT));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let enabled = !st.draft.trim().is_empty();
             let (fill, fg) = if enabled { (theme::PENCIL, theme::ON_PENCIL) } else { (theme::RAISED, theme::FAINT) };
-            let btn = egui::Button::new(RichText::new("Save").font(font(Face::UiStrong, 13.0)).color(fg))
+            let btn = egui::Button::new(RichText::new(tr("panel.save")).font(font(Face::UiStrong, 13.0)).color(fg))
                 .fill(fill)
                 .stroke(Stroke::NONE)
                 .corner_radius(5)
@@ -208,9 +206,9 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
 /// Moment / Scene / Range as one quiet control.
 fn mode_switch(ui: &mut Ui, r: &mut Review) {
     let items = [
-        (SpanMode::Moment, "Moment", "Just this one frame", true),
-        (SpanMode::Scene, "Scene", "The whole scene (S, Shift+S extends)", r.scene_count() > 0),
-        (SpanMode::Range, "Range", "Any range: drag on the ruler, or press I and O", true),
+        (SpanMode::Moment, tr("mode.moment"), tr("mode.moment_tip"), true),
+        (SpanMode::Scene, tr("mode.scene"), tr("mode.scene_tip"), r.scene_count() > 0),
+        (SpanMode::Range, tr("mode.range"), tr("mode.range_tip"), true),
     ];
     let (outer, _) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
     ui.painter().rect_filled(outer, 6.0, theme::SURROUND);
@@ -247,21 +245,21 @@ fn target(ui: &mut Ui, r: &mut Review) {
     let mut clear_time = false;
     let mut clear_area = false;
     if let Some(pi) = r.pending_in {
-        clear_time |= line(ui, icon::FIRST_PAGE, &format!("In point {}. Go to the end and press O.", r.tc(pi)), theme::LEADER, true);
+        clear_time |= line(ui, icon::FIRST_PAGE, &trf("target.in_point", &[("tc", &r.tc(pi))]), theme::LEADER, true);
     } else if let (Some(sc), Some(out)) = (t.scenes, t.t_out) {
-        let s = format!("{}, {} – {} ({})", Review::scene_label(sc), r.tc(t.t_in), r.tc(out), secs(t.t_in, out));
+        let s = trf("target.scene_range", &[("scenes", &Review::scene_label(sc)), ("a", &r.tc(t.t_in)), ("b", &r.tc(out)), ("secs", &secs(t.t_in, out))]);
         clear_time |= line(ui, icon::MOVIE, &s, theme::LEADER, true);
     } else if let Some(out) = t.t_out {
-        let s = format!("{} – {} ({})", r.tc(t.t_in), r.tc(out), secs(t.t_in, out));
+        let s = trf("target.range", &[("a", &r.tc(t.t_in)), ("b", &r.tc(out)), ("secs", &secs(t.t_in, out))]);
         clear_time |= line(ui, icon::STRAIGHTEN, &s, theme::LEADER, true);
     } else {
-        line(ui, icon::ADJUST, &format!("Frame {}", r.tc(t.t_in)), theme::MUTED, false);
+        line(ui, icon::ADJUST, &trf("target.frame", &[("tc", &r.tc(t.t_in))]), theme::MUTED, false);
     }
     if let Some(a) = r.area {
-        let (g, s) = if a.is_pin() { (icon::PIN, "Marked point on the picture") } else { (icon::CROP, "Marked area on the picture") };
-        clear_area |= line(ui, g, s, theme::PENCIL, true);
+        let (g, s) = if a.is_pin() { (icon::PIN, tr("target.pin")) } else { (icon::CROP, tr("target.area")) };
+        clear_area |= line(ui, g, &s, theme::PENCIL, true);
     } else if !r.playing && r.current.is_some() {
-        line(ui, icon::TOUCH, "Click or drag on the picture to mark a spot", theme::FAINT, false);
+        line(ui, icon::TOUCH, &tr("target.hint"), theme::FAINT, false);
     }
     if clear_time {
         r.clear_time();
@@ -282,7 +280,7 @@ fn line(ui: &mut Ui, glyph: char, text: &str, color: Color32, clearable: bool) -
             ui.add(egui::Label::new(RichText::new(text).font(font(Face::Tc, 12.5)).color(color)).wrap());
         });
         if clearable {
-            clicked = icon_button(ui, icon::CLOSE, 14.0, vec2(20.0, 20.0), theme::MUTED, "Clear").clicked();
+            clicked = icon_button(ui, icon::CLOSE, 14.0, vec2(20.0, 20.0), theme::MUTED, &tr("common.clear")).clicked();
         }
     });
     clicked
@@ -353,7 +351,7 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
                         }
                         if was_hovered || armed {
                             if armed {
-                                let b = egui::Button::new(RichText::new("Delete?").font(font(Face::UiStrong, 12.0)).color(theme::RED))
+                                let b = egui::Button::new(RichText::new(tr("note.delete_confirm")).font(font(Face::UiStrong, 12.0)).color(theme::RED))
                                     .frame(false)
                                     .min_size(vec2(0.0, 26.0));
                                 if ui.add(b).clicked() {
@@ -361,21 +359,21 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
                                     r.remove_comment(id);
                                     return;
                                 }
-                            } else if icon_button(ui, icon::DELETE, 16.0, vec2(28.0, 26.0), theme::MUTED, "Delete").clicked() {
+                            } else if icon_button(ui, icon::DELETE, 16.0, vec2(28.0, 26.0), theme::MUTED, &tr("note.delete")).clicked() {
                                 st.armed_delete = Some((id.to_owned(), Instant::now()));
                                 ui.ctx().request_repaint_after(Duration::from_millis(2600));
                             }
-                            if icon_button(ui, icon::EDIT, 16.0, vec2(28.0, 26.0), theme::MUTED, "Edit").clicked() {
+                            if icon_button(ui, icon::EDIT, 16.0, vec2(28.0, 26.0), theme::MUTED, &tr("note.edit")).clicked() {
                                 st.editing = Some((id.to_owned(), cm.text.clone()));
                                 st.edit_needs_focus = true;
                             }
                         }
                         let (g, c, tip) = if cm.done {
-                            (icon::CHECK, theme::DONE, "Reopen")
+                            (icon::CHECK, theme::DONE, tr("note.reopen"))
                         } else {
-                            (icon::CHECK_OUTLINE, theme::MUTED, "Done")
+                            (icon::CHECK_OUTLINE, theme::MUTED, tr("note.done"))
                         };
-                        if icon_button(ui, g, 16.0, vec2(28.0, 26.0), c, tip).clicked() {
+                        if icon_button(ui, g, 16.0, vec2(28.0, 26.0), c, &tip).clicked() {
                             r.set_done(id, !cm.done);
                         }
                     });

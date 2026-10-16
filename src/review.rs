@@ -6,9 +6,11 @@ use std::time::{Duration, Instant};
 
 use eframe::glow::{self, HasContext};
 
+use crate::i18n::{self, Lang, tr, trf};
 use crate::model::scenes::Detection;
 use crate::model::{self, Area, Change, Comment, CommentStore, Selection};
 use crate::mpv::{Event, Mpv};
+use crate::theme;
 use crate::thumbs::Thumbnails;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,6 +48,9 @@ struct Prefs {
     volume: f64,
     #[serde(default)]
     muted: bool,
+    /// UI language code; unset means the system language.
+    #[serde(default)]
+    lang: Option<String>,
 }
 
 fn full_volume() -> f64 {
@@ -54,7 +59,7 @@ fn full_volume() -> f64 {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { paths: Vec::new(), video: None, volume: full_volume(), muted: false }
+        Self { paths: Vec::new(), video: None, volume: full_volume(), muted: false, lang: None }
     }
 }
 
@@ -76,6 +81,7 @@ fn save_prefs(p: &Prefs) {
 
 /// The last delete or done/undone, and the change that takes it back.
 pub struct Undo {
+    /// Catalog key of the notice (`undo.*`), translated when shown.
     pub label: &'static str,
     change: Change,
     pub at: Instant,
@@ -139,6 +145,7 @@ impl Review {
         let prefs = load_prefs();
         mpv.set_double("volume", prefs.volume);
         mpv.set_flag("mute", prefs.muted);
+        i18n::set(prefs.lang.as_deref().and_then(Lang::from_code).unwrap_or_else(i18n::system));
         Ok(Self {
             ctx: ctx.clone(),
             mpv,
@@ -227,7 +234,7 @@ impl Review {
                     }
                 }
                 Event::LoadFailed(why) => {
-                    self.error = Some(format!("Could not open the video ({}): {why}", self.current_name()));
+                    self.error = Some(trf("error.open_video", &[("name", &self.current_name()), ("why", &why)]));
                 }
                 _ => {}
             }
@@ -346,7 +353,7 @@ impl Review {
     pub fn open_paths(&mut self, paths: Vec<PathBuf>) {
         let found = model::collect_videos(&paths);
         if found.is_empty() {
-            self.error = Some("No video found at the given location.".into());
+            self.error = Some(tr("error.no_video"));
             return;
         }
         self.error = None;
@@ -492,6 +499,15 @@ impl Review {
         prefs.volume = self.volume;
         prefs.muted = self.muted;
         save_prefs(&prefs);
+    }
+
+    /// Switches the UI language now, remembers it, and adds the system font it may need.
+    pub fn set_language(&mut self, lang: Lang) {
+        i18n::set(lang);
+        let mut prefs = load_prefs();
+        prefs.lang = Some(lang.code().to_owned());
+        save_prefs(&prefs);
+        theme::install_fonts(&self.ctx, lang);
     }
 
     pub fn set_rate(&mut self, r: f64) {
@@ -668,14 +684,14 @@ impl Review {
     }
 
     pub fn set_done(&mut self, id: &str, done: bool) {
-        let label = if done { "Marked done" } else { "Reopened" };
+        let label = if done { "undo.marked_done" } else { "undo.reopened" };
         self.remember_undo(label, Change::Done { id: id.to_owned(), done: !done });
         self.change(Change::Done { id: id.to_owned(), done });
     }
 
     pub fn remove_comment(&mut self, id: &str) {
         if let Some(c) = self.comments.iter().find(|c| c.id == id).cloned() {
-            self.remember_undo("Note deleted", Change::Put(c));
+            self.remember_undo("undo.deleted", Change::Put(c));
         }
         if self.focus_id.as_deref() == Some(id) {
             self.focus_id = None;
@@ -737,7 +753,7 @@ impl Review {
     }
 
     pub fn scene_label(s: (u32, u32)) -> String {
-        if s.0 == s.1 { format!("Scene {}", s.0) } else { format!("Scenes {}–{}", s.0, s.1) }
+        if s.0 == s.1 { trf("scene.one", &[("n", &s.0)]) } else { trf("scene.many", &[("a", &s.0), ("b", &s.1)]) }
     }
 }
 

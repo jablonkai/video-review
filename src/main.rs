@@ -2,6 +2,7 @@
 //! Rust port of the Flutter app; same `<video>.comments.json` files.
 
 mod export;
+mod i18n;
 mod model;
 mod mpv;
 mod review;

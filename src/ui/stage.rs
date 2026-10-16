@@ -2,6 +2,7 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Ui, pos2, vec2};
 
+use crate::i18n::tr;
 use crate::model::Area;
 use crate::review::Review;
 
@@ -86,7 +87,7 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
     }
     if let Some(area) = r.area {
         let anchor = GreasePencil::new("draft").draw(&painter, frame, &area, 2.6, true);
-        tag(&painter, anchor, "new", 1.0);
+        tag(&painter, anchor, &tr("mark.new"), 1.0);
     }
     placed
 }
