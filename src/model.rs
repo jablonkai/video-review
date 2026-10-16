@@ -7,6 +7,8 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::{tr, trf};
+
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "m4v", "mov", "webm", "mkv", "mxf", "avi"];
 
 /// Region on the frame, normalized to 0..1. w == h == 0 is a pin.
@@ -117,7 +119,7 @@ pub fn timecode(t: f64, fps: f64) -> String {
 
 /// Duration label, e.g. "4.0 s".
 pub fn secs(a: f64, b: f64) -> String {
-    format!("{:.1} s", b - a)
+    trf("time.seconds", &[("s", &format!("{:.1}", b - a))])
 }
 
 // ---- files -----------------------------------------------------------------
@@ -236,7 +238,7 @@ impl CommentStore {
                 self.read_only = true;
                 self.needs_backup = true;
                 let name = self.file().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                return Err(format!("The notes file is unreadable and will not be overwritten ({name}): {e}"));
+                return Err(trf("error.notes_unreadable", &[("name", &name), ("err", &e)]));
             }
         };
         self.read_only = false;
@@ -275,12 +277,12 @@ impl CommentStore {
             }
             *comments = fresh;
         }
-        self.save(comments, fps).map_err(|e| format!("Could not save: {e}"))
+        self.save(comments, fps).map_err(|e| trf("error.save", &[("err", &e)]))
     }
 
     pub fn save(&mut self, comments: &mut [Comment], fps: f64) -> std::io::Result<()> {
         if self.read_only {
-            return Err(std::io::Error::other("the notes file is broken and will not be overwritten"));
+            return Err(std::io::Error::other(tr("error.notes_broken")));
         }
         comments.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
         let payload = FileJson {

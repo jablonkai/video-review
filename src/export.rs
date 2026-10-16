@@ -9,6 +9,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+use crate::i18n::{trf, trn};
 use crate::model::{Comment, frame_of};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,7 +205,7 @@ pub fn markdown(comments: &[Comment], meta: &Meta) -> String {
     let _ = writeln!(out, "# {}\n", md_escape(meta.name));
     let list = sorted(comments);
     let done = list.iter().filter(|c| c.done).count();
-    let _ = writeln!(out, "{} notes, {done} done. Timecode: non-drop frame (NDF).\n", list.len());
+    let _ = writeln!(out, "{}\n", trn("md.summary", list.len() as u64, &[("done", &done)]));
     for c in list {
         let (a, _) = frames(c, meta.fps);
         let mut tc = frame_tc(a, meta.fps);
@@ -212,8 +213,8 @@ pub fn markdown(comments: &[Comment], meta: &Meta) -> String {
             let _ = write!(tc, "–{}", frame_tc(frame_of(t.max(0.0), meta.fps), meta.fps));
         }
         let scenes = match c.scenes {
-            Some((x, y)) if x == y => format!(" (scene {x})"),
-            Some((x, y)) => format!(" (scenes {x}–{y})"),
+            Some((x, y)) if x == y => trf("md.scene", &[("n", &x)]),
+            Some((x, y)) => trf("md.scenes", &[("a", &x), ("b", &y)]),
             None => String::new(),
         };
         let text = c.text.trim().lines().map(md_escape).collect::<Vec<_>>().join("  \n  ");

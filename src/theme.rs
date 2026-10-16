@@ -4,6 +4,8 @@
 
 use egui::{Color32, FontData, FontDefinitions, FontFamily, FontId};
 
+use crate::i18n::Lang;
+
 pub const SURROUND: Color32 = Color32::from_rgb(0x1C, 0x1D, 0x1F);
 pub const PANEL: Color32 = Color32::from_rgb(0x22, 0x23, 0x26);
 pub const RAISED: Color32 = Color32::from_rgb(0x2B, 0x2D, 0x31);
@@ -58,7 +60,9 @@ pub fn font(face: Face, size: f32) -> FontId {
     FontId::new(size, FontFamily::Name(face.name().into()))
 }
 
-pub fn install_fonts(ctx: &egui::Context) {
+/// Embedded fonts, plus a system font behind them for scripts they lack
+/// (CJK). Safe to call again when the language changes.
+pub fn install_fonts(ctx: &egui::Context, lang: Lang) {
     macro_rules! f {
         ($file:literal) => {
             include_bytes!(concat!("../assets/fonts/", $file))
@@ -77,7 +81,13 @@ pub fn install_fonts(ctx: &egui::Context) {
         ("MaterialIcons", f!("MaterialIcons-Regular.otf")),
     ];
     let mut defs = FontDefinitions::default();
-    let fallback: Vec<String> = defs.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let mut fallback: Vec<String> = defs.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    if lang.needs_cjk()
+        && let Some(data) = system_cjk_font(lang)
+    {
+        defs.font_data.insert("SystemCJK".into(), data.into());
+        fallback.push("SystemCJK".into());
+    }
     for (name, bytes) in files {
         defs.font_data.insert(name.into(), FontData::from_static(bytes).into());
         let mut chain = vec![name.to_owned()];
@@ -91,6 +101,37 @@ pub fn install_fonts(ctx: &egui::Context) {
     ui.extend(fallback);
     defs.families.insert(FontFamily::Proportional, ui);
     ctx.set_fonts(defs);
+}
+
+/// The first installed CJK font we know of, with its face index in a collection.
+fn system_cjk_font(lang: Lang) -> Option<FontData> {
+    let ja = lang == Lang::Ja;
+    let candidates: &[(&str, u32)] = if cfg!(target_os = "macos") {
+        if ja {
+            &[("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", 0), ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0), ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0)]
+        } else {
+            &[("/System/Library/Fonts/Hiragino Sans GB.ttc", 0), ("/System/Library/Fonts/STHeiti Light.ttc", 0), ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0)]
+        }
+    } else if cfg!(windows) {
+        if ja {
+            &[("C:\\Windows\\Fonts\\YuGothR.ttc", 0), ("C:\\Windows\\Fonts\\meiryo.ttc", 0), ("C:\\Windows\\Fonts\\msgothic.ttc", 0)]
+        } else {
+            &[("C:\\Windows\\Fonts\\msyh.ttc", 0), ("C:\\Windows\\Fonts\\simhei.ttf", 0), ("C:\\Windows\\Fonts\\simsun.ttc", 0)]
+        }
+    } else {
+        // Noto Sans CJK collections: face 0 is Japanese, 2 is Simplified Chinese.
+        let face = if ja { 0 } else { 2 };
+        &[
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", face),
+            ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", face),
+            ("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf", 0),
+            ("/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc", 0),
+        ]
+    };
+    candidates.iter().find_map(|(path, index)| {
+        let bytes = std::fs::read(path).ok()?;
+        Some(FontData { index: *index, ..FontData::from_owned(bytes) })
+    })
 }
 
 /// Material icon code points (same glyphs as the Flutter version).
@@ -121,6 +162,7 @@ pub mod icon {
     pub const VOLUME_DOWN: char = '\u{e6c2}';
     pub const VOLUME_OFF: char = '\u{e6c4}';
     pub const REFRESH: char = '\u{e514}';
+    pub const LANGUAGE: char = '\u{e366}';
 }
 
 pub fn apply_style(ctx: &egui::Context) {
@@ -161,4 +203,23 @@ pub fn apply_style(ctx: &egui::Context) {
         s.text_styles.insert(egui::TextStyle::Button, font(Face::Ui, 13.0));
         s.text_styles.insert(egui::TextStyle::Small, font(Face::Ui, 11.5));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Laying out CJK text loads every font in the chain, so a system font
+    /// egui cannot parse would panic here rather than at the first frame.
+    #[test]
+    fn cjk_fonts_load_and_shape() {
+        for lang in [Lang::Ja, Lang::Zh] {
+            let ctx = egui::Context::default();
+            install_fonts(&ctx, lang);
+            ctx.begin_pass(Default::default());
+            let has = ctx.fonts_mut(|f| f.has_glyphs(&font(Face::Ui, 13.0), "日本語"));
+            ctx.end_pass().textures_delta.clear(); // nothing renders the font atlas here
+            assert_eq!(has, system_cjk_font(lang).is_some(), "{}", lang.code());
+        }
+    }
 }

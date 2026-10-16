@@ -2,6 +2,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
+use crate::i18n::{trf, trn};
 use crate::model::secs;
 use crate::review::Review;
 use crate::theme::{self, Face};
@@ -28,7 +29,7 @@ pub fn filmstrip(ui: &mut Ui, r: &mut Review) {
     let hover = resp.hover_pos().and_then(|p| scene_at_x(r, p.x));
     if let Some(n) = hover
         && let Some((a, b)) = r.scene_range(n) {
-        r.hover_info = format!("Scene {n}   {} – {}   {}", r.tc(a), r.tc(b), secs(a, b));
+        r.hover_info = trf("scene.hover", &[("n", &n), ("a", &r.tc(a)), ("b", &r.tc(b)), ("secs", &secs(a, b))]);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     if resp.clicked()
@@ -156,7 +157,7 @@ pub fn ruler(ui: &mut Ui, r: &mut Review, drag: &mut RulerDrag) -> bool {
         resp.clone().on_hover_ui_at_pointer(|ui| {
             ui.set_max_width(420.0);
             if many {
-                ui.label(RichText::new(format!("{} notes here — click to cycle", lines.len())).font(theme::font(Face::UiStrong, 12.0)).color(theme::MUTED));
+                ui.label(RichText::new(trn("ruler.stack", lines.len() as u64, &[])).font(theme::font(Face::UiStrong, 12.0)).color(theme::MUTED));
             }
             for l in &lines {
                 ui.label(RichText::new(l).font(theme::font(Face::Ui, 12.5)).color(theme::PAPER));
