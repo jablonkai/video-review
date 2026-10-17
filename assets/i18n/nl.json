@@ -4,6 +4,7 @@
   "export.edl": "EDL (DaVinci Resolve-markers)",
   "export.unknown_format": "Onbekend exportformaat – gebruik een van deze extensies: {exts}",
   "export.failed": "Exporteren mislukt ({path}): {err}",
+  "export.edl_capped": { "one": "Een EDL bevat hoogstens {max} markers: alleen de eerste {max} van {n} notitie zijn geëxporteerd. Gebruik FCPXML of Markdown om alles te exporteren.", "other": "Een EDL bevat hoogstens {max} markers: alleen de eerste {max} van {n} notities zijn geëxporteerd. Gebruik FCPXML of Markdown om alles te exporteren." },
 
   "header.pick_video": "Een andere video uit deze map",
   "header.fps": "{fps} fps",

@@ -4,6 +4,7 @@
   "export.edl": "EDL（DaVinci Resolve 标记）",
   "export.unknown_format": "未知的导出格式 – 请使用以下扩展名之一：{exts}",
   "export.failed": "导出失败（{path}）：{err}",
+  "export.edl_capped": { "other": "EDL 最多只能容纳 {max} 个标记：{n} 条批注中只导出了前 {max} 条。要全部导出，请使用 FCPXML 或 Markdown。" },
 
   "header.pick_video": "此文件夹中的另一个视频",
   "header.fps": "{fps} fps",

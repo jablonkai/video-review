@@ -107,6 +107,10 @@ pub fn edl_escape(text: &str) -> String {
     one_line(text).replace('|', "/")
 }
 
+/// CMX3600 event numbers have three digits, so an EDL holds at most this many
+/// notes; the latest ones beyond it are left out.
+pub const EDL_MAX_EVENTS: usize = 999;
+
 /// CMX3600 EDL in the shape DaVinci Resolve writes and reads as timeline
 /// markers: one one-frame event per note, followed by a
 /// ` |C:<color> |M:<name> |D:<duration in frames>` line. Open notes are blue,
@@ -115,7 +119,7 @@ pub fn edl(comments: &[Comment], meta: &Meta) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "TITLE: {}", edl_escape(meta.name));
     out.push_str("FCM: NON-DROP FRAME\n\n");
-    for (i, c) in sorted(comments).into_iter().enumerate() {
+    for (i, c) in sorted(comments).into_iter().take(EDL_MAX_EVENTS).enumerate() {
         let (a, b) = frames(c, meta.fps);
         let (tin, tout) = (frame_tc(a, meta.fps), frame_tc(a + 1, meta.fps));
         let _ = writeln!(out, "{:03}  001      V     C        {tin} {tout} {tin} {tout}  ", i + 1);
@@ -284,6 +288,21 @@ mod tests {
         assert_eq!(lines[4], " |C:ResolveColorBlue |M:first line |D:1");
         assert_eq!(lines[6], "002  001      V     C        00:00:02:00 00:00:02:01 00:00:02:00 00:00:02:01  ");
         assert_eq!(lines[7], " |C:ResolveColorGreen |M:later / x |D:50");
+    }
+
+    #[test]
+    fn edl_caps_event_numbers_at_999() {
+        let list: Vec<Comment> = (0..1000).map(|i| note("n", i as f64 / 25.0, None, false)).collect();
+        let events = |s: &str| s.lines().filter(|l| l.contains("  001      V     C  ")).count();
+        let s = edl(&list[..999], &meta(25.0));
+        assert_eq!(events(&s), 999);
+        assert!(s.contains("\n999  001 "), "{s}");
+        let s = edl(&list, &meta(25.0));
+        assert_eq!(events(&s), 999);
+        assert!(!s.contains("1000  001 "), "{s}");
+        // The latest note is the one left out.
+        assert!(s.contains(&format!("999  001      V     C        {}", frame_tc(998, 25.0))), "{s}");
+        assert!(!s.contains(&frame_tc(1000, 25.0)), "{s}");
     }
 
     #[test]

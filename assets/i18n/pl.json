@@ -4,6 +4,7 @@
   "export.edl": "EDL (znaczniki DaVinci Resolve)",
   "export.unknown_format": "Nieznany format eksportu – użyj jednego z rozszerzeń: {exts}",
   "export.failed": "Eksport nie powiódł się ({path}): {err}",
+  "export.edl_capped": { "one": "EDL mieści najwyżej {max} znaczników: wyeksportowano tylko pierwsze {max} z {n} notatki. Aby wyeksportować wszystkie, użyj FCPXML lub Markdown.", "few": "EDL mieści najwyżej {max} znaczników: wyeksportowano tylko pierwsze {max} z {n} notatek. Aby wyeksportować wszystkie, użyj FCPXML lub Markdown.", "many": "EDL mieści najwyżej {max} znaczników: wyeksportowano tylko pierwsze {max} z {n} notatek. Aby wyeksportować wszystkie, użyj FCPXML lub Markdown.", "other": "EDL mieści najwyżej {max} znaczników: wyeksportowano tylko pierwsze {max} z {n} notatek. Aby wyeksportować wszystkie, użyj FCPXML lub Markdown." },
 
   "header.pick_video": "Inne wideo z tego folderu",
   "header.fps": "{fps} kl./s",
