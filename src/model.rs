@@ -170,13 +170,22 @@ pub enum Change {
     Remove(String),
 }
 
+/// The order notes are listed, navigated and saved in. Stable, so notes at the same time keep their order.
+fn sort_by_time(list: &mut [Comment]) {
+    list.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+}
+
 impl Change {
+    /// Keeps `list` in [`sort_by_time`] order, also when the result can't be saved.
     pub fn apply(&self, list: &mut Vec<Comment>) {
         match self {
-            Change::Put(c) => match list.iter_mut().find(|x| x.id == c.id) {
-                Some(x) => *x = c.clone(),
-                None => list.push(c.clone()),
-            },
+            Change::Put(c) => {
+                match list.iter_mut().find(|x| x.id == c.id) {
+                    Some(x) => *x = c.clone(),
+                    None => list.push(c.clone()),
+                }
+                sort_by_time(list);
+            }
             Change::Text { id, text } => {
                 if let Some(c) = list.iter_mut().find(|c| &c.id == id) {
                     c.text = text.clone();
@@ -272,7 +281,7 @@ impl CommentStore {
                 }
             })
             .collect();
-        list.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+        sort_by_time(&mut list);
         Ok(list)
     }
 
@@ -319,7 +328,7 @@ impl CommentStore {
         if self.read_only {
             return Err(std::io::Error::other(tr("error.notes_broken")));
         }
-        comments.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+        sort_by_time(comments);
         let payload = FileJson {
             video: self.video.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             fps,
@@ -745,6 +754,24 @@ mod tests {
         Change::Put(removed.clone()).apply(&mut list);
         Change::Put(removed).apply(&mut list);
         assert_eq!(list.len(), 2, "putting back twice keeps one copy");
+    }
+
+    #[test]
+    fn put_keeps_time_order_while_the_file_is_broken() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.file(), "{").unwrap();
+        assert!(store.load().is_err());
+        let mut list = vec![note("a", 5.0), note("c", 60.0)];
+        let mut pending = Vec::new();
+        for ch in [Change::Put(note("b", 50.0)), Change::Put(note("a", 70.0))] {
+            ch.apply(&mut list);
+            pending.push(ch);
+            assert!(store.flush(&mut list, &mut pending, 24.0).is_err());
+        }
+        let ids: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["b", "c", "a"], "a new or moved note goes in by time, like save() orders it");
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
