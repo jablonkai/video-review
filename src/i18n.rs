@@ -168,11 +168,30 @@ fn entry(lang: Lang, key: &str) -> Option<&'static Entry> {
     catalog(lang).get(key).or_else(|| catalog(Lang::En).get(key))
 }
 
+/// Replaces each `{name}` in `text` with its value from `args` in a single scan, so inserted
+/// values are never scanned again. Unknown placeholders are kept as is.
 fn fill(text: &str, args: &[(&str, &dyn Display)]) -> String {
-    let mut out = text.to_owned();
-    for (name, value) in args {
-        out = out.replace(&format!("{{{name}}}"), &value.to_string());
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let tail = &rest[open + 1..];
+        let found = tail.find('}').and_then(|close| {
+            let name = &tail[..close];
+            args.iter().find(|(n, _)| *n == name).map(|(_, v)| (close, v))
+        });
+        match found {
+            Some((close, value)) => {
+                out.push_str(&value.to_string());
+                rest = &tail[close + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = tail;
+            }
+        }
     }
+    out.push_str(rest);
     out
 }
 
@@ -195,8 +214,9 @@ pub fn trn_in(lang: Lang, key: &str, n: u64, args: &[(&str, &dyn Display)]) -> S
         Some(Entry::Text(s)) => s.clone(),
         None => key.to_owned(),
     };
-    let text = fill(&text, &[("n", &n)]);
-    fill(&text, args)
+    let mut all: Vec<(&str, &dyn Display)> = vec![("n", &n)];
+    all.extend_from_slice(args);
+    fill(&text, &all)
 }
 
 /// Text for `key` in the current language.
@@ -283,6 +303,10 @@ mod tests {
     #[test]
     fn fills_and_falls_back() {
         assert_eq!(fill("{a}-{b}-{a}", &[("a", &1), ("b", &"x")]), "1-x-1");
+        // Inserted values are not expanded again; unknown or unclosed braces stay literal.
+        assert_eq!(fill("{name}: {err}", &[("name", &"a{err}.mp4"), ("err", &"bad")]), "a{err}.mp4: bad");
+        assert_eq!(fill("{x} {a} {", &[("a", &"{a}")]), "{x} {a} {");
+        assert_eq!(fill("{n} {file}", &[("n", &2), ("file", &"{n}")]), "2 {n}");
         assert_eq!(tr_in(Lang::Hu, "no.such.key"), "no.such.key");
         assert_eq!(tr_in(Lang::Hu, "panel.notes"), "Jegyzetek");
         assert_eq!(Lang::from_code("hu_HU.UTF-8"), Some(Lang::Hu));
