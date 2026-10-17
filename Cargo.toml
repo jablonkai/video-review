@@ -3,6 +3,7 @@ name = "video-review"
 version = "0.1.0"
 edition = "2024"
 description = "Video Review: timecoded, scene-range and on-frame review notes on finished cuts"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }

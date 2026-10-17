@@ -73,3 +73,11 @@ cargo clippy --all-targets -- -D warnings   # CI gate
 The UI was checked end to end with real mouse/keyboard events
 (frame step, scene click, area drag + save, ruler range, help, edit, done, delete,
 next note, video switch).
+
+## License
+
+Copyright (C) 2026 Tamás Jablonkai
+
+Licensed under the GNU General Public License v3.0 or later — see [LICENSE](LICENSE).
+Bundled fonts keep their own licenses: Archivo and Source Serif 4 under the SIL Open Font
+License, Material Icons under Apache 2.0 (texts in `assets/fonts`).
