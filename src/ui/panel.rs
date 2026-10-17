@@ -142,6 +142,12 @@ pub fn icon_button(ui: &mut Ui, glyph: char, size: f32, box_size: egui::Vec2, co
     resp.on_hover_text(tip)
 }
 
+/// Consumes a bare Enter press. `consume_key` matches logically and would also
+/// take Shift/Alt+Enter, which must reach the multiline `TextEdit` as a newline.
+fn consume_plain_enter(i: &mut egui::InputState) -> bool {
+    !i.modifiers.shift && !i.modifiers.alt && i.consume_key(egui::Modifiers::NONE, Key::Enter)
+}
+
 fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
     ui.label(RichText::new(tr("panel.new_note")).font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
     ui.add_space(6.0);
@@ -154,7 +160,7 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
     let has_focus = ui.memory(|m| m.has_focus(id));
     if has_focus {
         // Enter saves, Shift+Enter is a new line.
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter)) && !st.draft.trim().is_empty() {
+        if ui.input_mut(consume_plain_enter) && !st.draft.trim().is_empty() {
             r.add_comment(&st.draft);
             st.draft.clear();
             ui.memory_mut(|m| m.surrender_focus(id));
@@ -419,7 +425,7 @@ fn editor(ui: &mut Ui, r: &mut Review, st: &mut PanelState, id: &str) {
     let has_focus = ui.memory(|m| m.has_focus(edit_id));
     let mut finish: Option<bool> = None;
     if has_focus {
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter)) {
+        if ui.input_mut(consume_plain_enter) {
             finish = Some(true);
         } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
             finish = Some(false);
@@ -472,4 +478,31 @@ fn note_frame(ui: &mut Ui, r: &mut Review, cm: &crate::model::Comment, number: u
         GreasePencil::new(&cm.id).draw(&p, rect, &area, 1.8, false);
     }
     tag(&p, rect.left_top() + vec2(4.0, 18.0), &number.to_string(), 0.85);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn enter_consumed(modifiers: egui::Modifiers) -> bool {
+        let ctx = egui::Context::default();
+        let raw = egui::RawInput {
+            events: vec![
+                egui::Event::ModifiersChanged(modifiers),
+                egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers },
+            ],
+            ..Default::default()
+        };
+        let mut consumed = false;
+        let mut out = ctx.run_ui(raw, |ui| consumed = ui.input_mut(consume_plain_enter));
+        out.textures_delta.clear();
+        consumed
+    }
+
+    #[test]
+    fn only_plain_enter_is_consumed() {
+        assert!(enter_consumed(egui::Modifiers::NONE));
+        assert!(!enter_consumed(egui::Modifiers::SHIFT));
+        assert!(!enter_consumed(egui::Modifiers::ALT));
+    }
 }
