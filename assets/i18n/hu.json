@@ -4,6 +4,7 @@
   "export.edl": "EDL (DaVinci Resolve markerek)",
   "export.unknown_format": "Ismeretlen exportformátum – használd az egyik kiterjesztést: {exts}",
   "export.failed": "Az exportálás nem sikerült ({path}): {err}",
+  "export.edl_capped": { "one": "Egy EDL legfeljebb {max} markert tartalmazhat: a(z) {n} jegyzetből csak az első {max} került exportálásra. Az összeshez használj FCPXML-t vagy Markdownt.", "other": "Egy EDL legfeljebb {max} markert tartalmazhat: a(z) {n} jegyzetből csak az első {max} került exportálásra. Az összeshez használj FCPXML-t vagy Markdownt." },
 
   "header.pick_video": "Másik videó ebből a mappából",
   "header.fps": "{fps} fps",

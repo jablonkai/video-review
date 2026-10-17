@@ -4,6 +4,7 @@
   "export.edl": "EDL (DaVinci Resolve markers)",
   "export.unknown_format": "Unknown export format – use one of these extensions: {exts}",
   "export.failed": "Export failed ({path}): {err}",
+  "export.edl_capped": { "one": "An EDL holds at most {max} markers: only the first {max} of {n} note were exported. Use FCPXML or Markdown to export all of them.", "other": "An EDL holds at most {max} markers: only the first {max} of {n} notes were exported. Use FCPXML or Markdown to export all of them." },
 
   "header.pick_video": "Another video from this folder",
   "header.fps": "{fps} fps",

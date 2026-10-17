@@ -6,7 +6,7 @@ use egui::text::LayoutJob;
 use egui::{Align, Align2, Color32, Frame, Key, Layout, Margin, Rect, RichText, Sense, Stroke, TextFormat, Ui, UiBuilder, pos2, vec2};
 
 use crate::export;
-use crate::i18n::{self, Lang, tr, trf};
+use crate::i18n::{self, Lang, tr, trf, trn};
 use crate::model::{VIDEO_EXTENSIONS, secs};
 use crate::review::{Review, ScenesStatus};
 use crate::theme::{self, Face, font, icon};
@@ -71,6 +71,9 @@ impl App {
         let meta = export::Meta { name: &name, fps: self.r.fps, duration: self.r.duration };
         if let Err(e) = std::fs::write(&path, export::render(format, &self.r.comments, &meta)) {
             self.r.error = Some(trf("export.failed", &[("path", &path.display()), ("err", &e)]));
+        } else if format == export::Format::Edl && self.r.comments.len() > export::EDL_MAX_EVENTS {
+            let n = self.r.comments.len() as u64;
+            self.r.error = Some(trn("export.edl_capped", n, &[("max", &export::EDL_MAX_EVENTS)]));
         }
     }
 
