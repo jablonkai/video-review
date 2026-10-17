@@ -332,4 +332,81 @@ mod tests {
         assert!(s.contains("- [ ] **00:00:00:00** (scenes 2–3) — open\n"), "{s}");
         assert!(s.contains("- [x] **00:00:01:00–00:00:02:00** (scenes 2–3) — fix \\*this\\*  \n  and that\n"), "{s}");
     }
+
+    /// Notes at fractional rates with the expected NDF timecodes (counted at
+    /// 24/30/60 per second), worked out by hand: frame = floor(t * fps), then
+    /// HH:MM:SS from frame / nominal and FF from frame % nominal.
+    /// Each expectation is (in, in + 1 frame, out or None, duration in frames).
+    #[allow(clippy::type_complexity)]
+    fn fractional_cases() -> Vec<(f64, Vec<Comment>, Vec<(&'static str, &'static str, Option<&'static str>, i64)>)> {
+        vec![
+            (
+                24000.0 / 1001.0,
+                vec![note("range", 10.0, Some(150.15), false), note("pin", 0.5, None, true)],
+                vec![
+                    // 0.5 s -> frame 11.
+                    ("00:00:00:11", "00:00:00:12", None, 1),
+                    // 10 s -> frame 239 = 9 s + 23; 150.15 s -> frame 3600 = 150 s.
+                    ("00:00:09:23", "00:00:10:00", Some("00:02:30:00"), 3361),
+                ],
+            ),
+            (
+                30000.0 / 1001.0,
+                vec![note("hour", 60.0, Some(3600.0), false), note("pin", 0.5, None, true)],
+                vec![
+                    // 0.5 s -> frame 14.
+                    ("00:00:00:14", "00:00:00:15", None, 1),
+                    // 60 s -> frame 1798 = 59 s + 28; 3600 s -> frame 107892 = 3596 s + 12.
+                    ("00:00:59:28", "00:00:59:29", Some("00:59:56:12"), 106094),
+                ],
+            ),
+            (
+                60000.0 / 1001.0,
+                vec![note("late", 3600.0, None, false), note("range", 1.0, Some(120.12), true)],
+                vec![
+                    // 1 s -> frame 59, the next frame rolls over to 1 s; 120.12 s -> frame 7200 = 120 s.
+                    ("00:00:00:59", "00:00:01:00", Some("00:02:00:00"), 7141),
+                    // 3600 s -> frame 215784 = 3596 s + 24.
+                    ("00:59:56:24", "00:59:56:25", None, 1),
+                ],
+            ),
+        ]
+    }
+
+    #[test]
+    fn edl_fractional_rates() {
+        for (fps, list, want) in fractional_cases() {
+            let s = edl(&list, &meta(fps));
+            let lines: Vec<&str> = s.lines().collect();
+            assert_eq!(lines[1], "FCM: NON-DROP FRAME");
+            let mut sorted = list.clone();
+            sorted.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+            for (i, ((tin, tout, _, dur), c)) in want.iter().zip(&sorted).enumerate() {
+                let event = format!("{:03}  001      V     C        {tin} {tout} {tin} {tout}  ", i + 1);
+                assert_eq!(lines[3 + 3 * i], event, "{fps} fps\n{s}");
+                let color = if c.done { "ResolveColorGreen" } else { "ResolveColorBlue" };
+                assert_eq!(lines[4 + 3 * i], format!(" |C:{color} |M:{} |D:{dur}", c.text), "{fps} fps\n{s}");
+            }
+            assert_eq!(lines.len(), 3 + 3 * want.len(), "{fps} fps\n{s}");
+        }
+    }
+
+    #[test]
+    fn markdown_fractional_rates() {
+        for (fps, list, want) in fractional_cases() {
+            let s = markdown(&list, &meta(fps));
+            let mut sorted = list.clone();
+            sorted.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+            let items: Vec<String> = want
+                .iter()
+                .zip(&sorted)
+                .map(|((tin, _, tout, _), c)| {
+                    let tc = tout.map_or(tin.to_string(), |o| format!("{tin}–{o}"));
+                    format!("- [{}] **{tc}** (scenes 2–3) — {}", if c.done { 'x' } else { ' ' }, c.text)
+                })
+                .collect();
+            let got: Vec<&str> = s.lines().filter(|l| l.starts_with("- [")).collect();
+            assert_eq!(got, items, "{fps} fps\n{s}");
+        }
+    }
 }
