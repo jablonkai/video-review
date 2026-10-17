@@ -76,7 +76,7 @@ impl App {
 
     /// Global shortcuts. Ignored while typing or when the help is on top.
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() {
+        if ctx.text_edit_focused() {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
