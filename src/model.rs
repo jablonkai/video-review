@@ -574,6 +574,46 @@ mod tests {
     }
 
     #[test]
+    fn collect_videos_filters_and_sorts() {
+        let dir = std::env::temp_dir().join(format!("vr-test-{}", Comment::new_id()));
+        let (cut, loose) = (dir.join("cut"), dir.join("loose"));
+        std::fs::create_dir_all(cut.join("sub")).unwrap();
+        std::fs::create_dir_all(cut.join("folder.mkv")).unwrap();
+        std::fs::create_dir_all(&loose).unwrap();
+        for f in ["b.MOV", "a.mp4", "c.webm", ".hidden.mp4", "notes.txt", "a.mp4.comments.json", "noext", "sub/deep.mp4"] {
+            std::fs::write(cut.join(f), b"").unwrap();
+        }
+        for f in ["z.mxf", "y.avi", ".x.mov", "w.png"] {
+            std::fs::write(loose.join(f), b"").unwrap();
+        }
+        let p = |rel: &str| dir.join(rel);
+        let cut_videos = || vec![p("cut/a.mp4"), p("cut/b.MOV"), p("cut/c.webm")];
+        let cases: Vec<(Vec<PathBuf>, Vec<PathBuf>)> = vec![
+            // A folder: only its visible video files (any extension case), sorted,
+            // no subfolders (not even one named like a video), not recursive.
+            (vec![cut.clone()], cut_videos()),
+            // Files are kept in argument order; hidden and non-video files are dropped.
+            (
+                vec![p("loose/z.mxf"), p("loose/y.avi"), p("loose/.x.mov"), p("loose/w.png"), p("cut/notes.txt")],
+                vec![p("loose/z.mxf"), p("loose/y.avi")],
+            ),
+            // Folders and files mixed: each argument expands in place, duplicates
+            // keep their first position, missing paths are skipped.
+            (
+                vec![p("loose/z.mxf"), cut.clone(), p("cut/b.MOV"), p("missing.mp4"), p("loose/z.mxf")],
+                [vec![p("loose/z.mxf")], cut_videos()].concat(),
+            ),
+            (vec![p("cut/sub")], vec![p("cut/sub/deep.mp4")]),
+            (vec![p("cut/folder.mkv"), p("missing")], vec![]),
+            (vec![], vec![]),
+        ];
+        for (args, want) in cases {
+            assert_eq!(collect_videos(&args), want, "{args:?}");
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
     fn json_round_trip_keeps_format() {
         let dir = std::env::temp_dir().join(format!("vr-test-{}", Comment::new_id()));
         std::fs::create_dir_all(&dir).unwrap();
