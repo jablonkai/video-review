@@ -257,8 +257,9 @@ impl Review {
         }
         if self.last_check.elapsed() > Duration::from_secs(4) {
             self.last_check = Instant::now();
-            // An unreadable file is tried again on every poll until it parses.
-            if self.store.as_ref().is_some_and(|s| s.read_only() || s.changed_externally()) {
+            // An unreadable file is tried again on every poll until it parses, and
+            // pending changes until they are written.
+            if self.store.as_ref().is_some_and(|s| s.read_only() || s.changed_externally()) || !self.pending.is_empty() {
                 self.reload();
             }
         }
@@ -377,6 +378,8 @@ impl Review {
     }
 
     pub fn load_video(&mut self, path: &Path) {
+        // One last try with this video's fps; what still can't be written waits in the store's pending file.
+        self.save_pending();
         self.current = Some(path.to_owned());
         let mut prefs = load_prefs();
         prefs.video = Some(path.to_owned());
@@ -395,7 +398,6 @@ impl Review {
         self.area = None;
         self.focus_id = None;
         self.hover_id = None;
-        self.pending.clear();
         self.undo = None;
         let mut store = CommentStore::new(path);
         self.comments = match store.load() {
@@ -405,6 +407,11 @@ impl Review {
                 Vec::new()
             }
         };
+        // Left over from an earlier session; the poll writes them once the fps is known.
+        self.pending = store.load_pending();
+        for ch in &self.pending {
+            ch.apply(&mut self.comments);
+        }
         self.store = Some(store);
         self.thumbs.set_video(path);
         self.mpv.set_flag("pause", true);
@@ -720,10 +727,16 @@ impl Review {
     fn flush(&mut self) {
         let fps = self.fps;
         let Some(store) = &mut self.store else { return };
-        match store.commit(&mut self.comments, &self.pending, fps) {
-            Ok(()) => self.pending.clear(),
-            // Kept in `pending` while the file is unreadable; the poll retries.
-            Err(e) => self.error = Some(e),
+        // Kept in `pending` (and its file) while the notes file is unreadable; the poll retries.
+        if let Err(e) = store.flush(&mut self.comments, &mut self.pending, fps) {
+            self.error = Some(e);
+        }
+    }
+
+    /// Writes changes still waiting, before leaving the video or quitting.
+    pub fn save_pending(&mut self) {
+        if !self.pending.is_empty() {
+            self.flush();
         }
     }
 
