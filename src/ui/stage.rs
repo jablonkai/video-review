@@ -17,6 +17,20 @@ pub fn content_rect(b: Rect, vw: i64, vh: i64) -> Rect {
     Rect::from_center_size(b.center(), vec2(vw as f32 * scale, vh as f32 * scale))
 }
 
+/// Smallest area side (normalized); a thinner drag counts as a pin.
+const MIN_AREA_SIDE: f64 = 0.005;
+
+/// The area spanned by a drag from `a` to `b` (normalized). A drag that is
+/// too thin along either axis would leave an invisible area, so it becomes a
+/// pin at its start point instead.
+fn drag_area(a: (f64, f64), b: (f64, f64)) -> Area {
+    let (w, h) = ((a.0 - b.0).abs(), (a.1 - b.1).abs());
+    if w < MIN_AREA_SIDE || h < MIN_AREA_SIDE {
+        return Area::pin(a.0, a.1);
+    }
+    Area { x: a.0.min(b.0), y: a.1.min(b.1), w, h }
+}
+
 #[derive(Default)]
 pub struct StageDrag {
     start: Option<Pos2>,
@@ -57,8 +71,7 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
             if let Some(p) = pointer
                 && (drag.moved || (p - s).length() >= 6.0) {
                     drag.moved = true;
-                    let (a, b) = (norm(s), norm(p));
-                    r.area = Some(Area { x: a.0.min(b.0), y: a.1.min(b.1), w: (a.0 - b.0).abs(), h: (a.1 - b.1).abs() });
+                    r.area = Some(drag_area(norm(s), norm(p)));
                 }
         } else {
             if !drag.moved {
@@ -90,4 +103,19 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
         tag(&painter, anchor, &tr("mark.new"), 1.0);
     }
     placed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thin_drags_become_pins_at_the_start() {
+        assert_eq!(drag_area((0.5, 1.0), (0.8, 1.0)), Area::pin(0.5, 1.0));
+        assert_eq!(drag_area((0.3, 0.6), (0.3, 0.2)), Area::pin(0.3, 0.6));
+        assert_eq!(drag_area((0.3, 0.6), (0.7, 0.603)), Area::pin(0.3, 0.6));
+        let a = drag_area((0.6, 0.5), (0.2, 0.1));
+        assert_eq!((a.x, a.y), (0.2, 0.1));
+        assert!((a.w - 0.4).abs() < 1e-9 && (a.h - 0.4).abs() < 1e-9);
+    }
 }
