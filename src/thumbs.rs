@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Condvar, Mutex, Once, mpsc};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use egui::{ColorImage, TextureHandle, TextureOptions};
 use sha1::{Digest, Sha1};
@@ -14,6 +14,12 @@ const WIDTH: u32 = 240;
 const PARALLEL: usize = 3;
 /// The cache is pruned to this size, oldest-used video first.
 const CACHE_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+/// A failed grab is not asked for again before this, so a bad frame doesn't respawn ffmpeg every frame.
+const RETRY_AFTER: Duration = Duration::from_secs(5);
+
+/// The cache directory of the open video. The startup prune holds the lock while deleting,
+/// and skips this one, so the video being opened never loses its folder mid-prune.
+static ACTIVE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 fn cache_root() -> PathBuf {
     dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("video-review").join("thumbs")
@@ -40,9 +46,10 @@ pub struct Thumb {
 pub struct Thumbnails {
     ctx: egui::Context,
     queue: Arc<Queue>,
-    results: mpsc::Receiver<(u64, i64, ColorImage)>,
+    results: mpsc::Receiver<(u64, i64, Option<ColorImage>)>,
     images: HashMap<i64, Thumb>,
     requested: HashSet<i64>,
+    failed: HashMap<i64, Instant>,
     generation: u64,
     video: Option<PathBuf>,
     dir: Option<PathBuf>,
@@ -54,7 +61,7 @@ impl Thumbnails {
         let (tx, results) = mpsc::channel();
         static PRUNE: Once = Once::new();
         PRUNE.call_once(|| {
-            std::thread::spawn(|| prune(&cache_root(), CACHE_LIMIT));
+            std::thread::spawn(|| prune(&cache_root(), CACHE_LIMIT, &ACTIVE_DIR));
         });
         if let Some(ffmpeg) = crate::model::find_ffmpeg() {
             for _ in 0..PARALLEL {
@@ -70,13 +77,12 @@ impl Thumbnails {
                                 jobs = q.ready.wait(jobs).unwrap();
                             }
                         };
-                        if let Some(img) = make(&ffmpeg, &job) {
-                            if tx.send((job.generation, job.ms, img)).is_err() {
-                                return;
-                            }
-                            // Dozens can land within a frame; one repaint shortly after covers them.
-                            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                        let img = make(&ffmpeg, &job);
+                        if tx.send((job.generation, job.ms, img)).is_err() {
+                            return;
                         }
+                        // Dozens can land within a frame; one repaint shortly after covers them.
+                        ctx.request_repaint_after(Duration::from_millis(100));
                     }
                 });
             }
@@ -87,6 +93,7 @@ impl Thumbnails {
             results,
             images: HashMap::new(),
             requested: HashSet::new(),
+            failed: HashMap::new(),
             generation: 0,
             video: None,
             dir: None,
@@ -97,6 +104,7 @@ impl Thumbnails {
         self.generation += 1;
         self.images.clear();
         self.requested.clear();
+        self.failed.clear();
         self.queue.jobs.lock().unwrap().clear();
         let meta = std::fs::metadata(path).ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -108,6 +116,8 @@ impl Thumbnails {
         let key = Sha1::digest(format!("{}|{size}|{modified}", path.display()).as_bytes());
         let hex: String = key.iter().take(8).map(|b| format!("{b:02x}")).collect();
         let dir = cache_root().join(hex);
+        // Claimed before it is created, so a running prune can't delete it afterwards.
+        *ACTIVE_DIR.lock().unwrap() = Some(dir.clone());
         let _ = std::fs::create_dir_all(&dir);
         // Mark as recently used for the LRU prune.
         let _ = std::fs::File::open(&dir).and_then(|f| f.set_modified(SystemTime::now()));
@@ -121,6 +131,11 @@ impl Thumbnails {
             if generation != self.generation {
                 continue;
             }
+            let Some(img) = img else {
+                self.requested.remove(&ms);
+                self.failed.insert(ms, Instant::now());
+                continue;
+            };
             let image = Arc::new(img);
             let color = self.ctx.load_texture(format!("thumb-{ms}"), image.clone(), TextureOptions::LINEAR);
             self.images.insert(ms, Thumb { color, gray: None, image });
@@ -158,6 +173,9 @@ impl Thumbnails {
 
     fn request(&mut self, ms: i64) {
         let (Some(video), Some(dir)) = (&self.video, &self.dir) else { return };
+        if self.failed.get(&ms).is_some_and(|at| at.elapsed() < RETRY_AFTER) {
+            return;
+        }
         if !self.requested.insert(ms) {
             return;
         }
@@ -171,6 +189,8 @@ impl Thumbnails {
 fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
     let file = job.dir.join(format!("{}.jpg", job.ms));
     if !file.exists() {
+        // The folder may have been removed (e.g. cache cleared) since the video was opened.
+        let _ = std::fs::create_dir_all(&job.dir);
         // Write beside it and rename, so an interrupted grab never leaves a truncated jpg.
         let tmp = job.dir.join(format!("{}.jpg.tmp", job.ms));
         let status = Command::new(ffmpeg)
@@ -196,7 +216,8 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
 }
 
 /// Deletes least recently used video directories under `root` until the rest fit in `limit` bytes.
-fn prune(root: &Path, limit: u64) {
+/// The directory in `active` is never deleted.
+fn prune(root: &Path, limit: u64, active: &Mutex<Option<PathBuf>>) {
     let Ok(entries) = std::fs::read_dir(root) else { return };
     let dirs: Vec<(PathBuf, u64, SystemTime)> = entries
         .flatten()
@@ -212,7 +233,11 @@ fn prune(root: &Path, limit: u64) {
         })
         .collect();
     for dir in to_prune(dirs, limit) {
-        let _ = std::fs::remove_dir_all(dir);
+        // Held during the delete: the open video can't claim this folder halfway through.
+        let active = active.lock().unwrap();
+        if active.as_deref() != Some(dir.as_path()) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
@@ -234,7 +259,6 @@ fn to_prune(mut dirs: Vec<(PathBuf, u64, SystemTime)>, limit: u64) -> Vec<PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn entry(name: &str, size: u64, secs: u64) -> (PathBuf, u64, SystemTime) {
         (PathBuf::from(name), size, SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
@@ -252,5 +276,21 @@ mod tests {
         assert_eq!(to_prune(dirs.clone(), 100), vec![PathBuf::from("old")]);
         assert_eq!(to_prune(dirs.clone(), 50), vec![PathBuf::from("old"), PathBuf::from("mid")]);
         assert_eq!(to_prune(dirs, 0).len(), 3);
+    }
+
+    #[test]
+    fn prune_keeps_active_dir() {
+        let root = std::env::temp_dir().join(format!("vr-test-thumbs-{}", std::process::id()));
+        let (old, new) = (root.join("old"), root.join("new"));
+        for (dir, secs) in [(&old, 10), (&new, 20)] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("0.jpg"), [0u8; 16]).unwrap();
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
+            std::fs::File::open(dir).unwrap().set_modified(t).unwrap();
+        }
+        prune(&root, 0, &Mutex::new(Some(old.clone())));
+        assert!(old.join("0.jpg").exists());
+        assert!(!new.exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
