@@ -67,25 +67,43 @@ pub fn panel(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
         return;
     }
 
+    // Rows only read the notes; a clicked action is applied after the loop,
+    // so indices stay valid and no row has to look its note up or clone it.
     let mut hovered: Option<String> = None;
+    let mut action: Option<(String, RowAction)> = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         Frame::NONE.inner_margin(Margin { left: 8, right: 8, top: 0, bottom: 20 }).show(ui, |ui| {
-            let ids: Vec<(usize, String)> = r
-                .comments
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| !(r.hide_done && c.done))
-                .map(|(i, c)| (i + 1, c.id.clone()))
-                .collect();
-            for (number, id) in ids {
-                if note_row(ui, r, st, number, &id) {
-                    hovered = Some(id);
+            for i in 0..r.comments.len() {
+                if r.hide_done && r.comments[i].done {
+                    continue;
+                }
+                let (row_hovered, row_action) = note_row(ui, r, st, i);
+                if row_hovered {
+                    hovered = Some(r.comments[i].id.clone());
+                }
+                if let Some(a) = row_action {
+                    action = Some((r.comments[i].id.clone(), a));
                 }
                 ui.add_space(2.0);
             }
         });
     });
     r.hover_id = hovered;
+    match action {
+        Some((id, RowAction::Remove)) => r.remove_comment(&id),
+        Some((id, RowAction::SetDone(done))) => r.set_done(&id, done),
+        Some((id, RowAction::UpdateText(text))) => r.update_text(&id, &text),
+        Some((id, RowAction::Focus)) => r.focus_comment(&id),
+        None => {}
+    }
+}
+
+/// What a click in a note row asks for, applied once all rows are drawn.
+enum RowAction {
+    Remove,
+    SetDone(bool),
+    UpdateText(String),
+    Focus,
 }
 
 /// File problems, and the undo offer after a delete or done.
@@ -292,11 +310,18 @@ fn line(ui: &mut Ui, glyph: char, text: &str, color: Color32, clearable: bool) -
     clicked
 }
 
-/// One note. Returns true while hovered.
-fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id: &str) -> bool {
-    let Some(cm) = r.comments.iter().find(|c| c.id == id).cloned() else { return false };
+/// The note at `index`. Returns whether it is hovered, and what was clicked.
+fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (bool, Option<RowAction>) {
+    let tex = {
+        let (t, done) = (r.comments[index].t_in, r.comments[index].done);
+        if done { r.thumbs.gray_at(t).cloned() } else { r.thumbs.at(t).cloned() }
+    };
+    let r: &Review = r;
+    let cm = &r.comments[index];
+    let id = cm.id.as_str();
+    let mut action = None;
     let focused = r.focus_id.as_deref() == Some(id);
-    let active = r.is_active(&cm, r.position());
+    let active = r.is_active(cm, r.position());
     let aspect = if r.video_w > 0 && r.video_h > 0 { r.video_w as f32 / r.video_h as f32 } else { 16.0 / 9.0 };
     let frame_h = NOTE_W / aspect;
     let editing = st.editing.as_ref().is_some_and(|(eid, _)| eid == id);
@@ -322,7 +347,7 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
             ui.add_space(9.0);
             ui.vertical(|ui| {
                 ui.add_space(10.0);
-                note_frame(ui, r, &cm, number, frame_h);
+                note_frame(ui, cm, tex, index + 1, frame_h);
             });
             ui.add_space(12.0);
             ui.vertical(|ui| {
@@ -362,7 +387,7 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
                                     .min_size(vec2(0.0, 26.0));
                                 if ui.add(b).clicked() {
                                     st.armed_delete = None;
-                                    r.remove_comment(id);
+                                    action = Some(RowAction::Remove);
                                     return;
                                 }
                             } else if icon_button(ui, icon::DELETE, 16.0, vec2(28.0, 26.0), theme::MUTED, &tr("note.delete")).clicked() {
@@ -380,13 +405,15 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
                             (icon::CHECK_OUTLINE, theme::MUTED, tr("note.done"))
                         };
                         if icon_button(ui, g, 16.0, vec2(28.0, 26.0), c, &tip).clicked() {
-                            r.set_done(id, !cm.done);
+                            action = Some(RowAction::SetDone(!cm.done));
                         }
                     });
                 });
                 ui.add_space(3.0);
                 if editing {
-                    editor(ui, r, st, id);
+                    if let Some(text) = editor(ui, st, id) {
+                        action = Some(RowAction::UpdateText(text));
+                    }
                 } else {
                     let mut job = LayoutJob::default();
                     job.wrap.max_width = ui.available_width();
@@ -415,12 +442,13 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, number: usize, id:
         ui.painter().set(bg, egui::Shape::rect_filled(resp.rect, 6.0, theme::RAISED));
     }
     if resp.clicked() && !editing {
-        r.focus_comment(id);
+        action = Some(RowAction::Focus);
     }
-    hovered
+    (hovered, action)
 }
 
-fn editor(ui: &mut Ui, r: &mut Review, st: &mut PanelState, id: &str) {
+/// The inline editor. Returns the text once the edit is saved.
+fn editor(ui: &mut Ui, st: &mut PanelState, id: &str) -> Option<String> {
     let edit_id = egui::Id::unique(("edit-note", id));
     let has_focus = ui.memory(|m| m.has_focus(edit_id));
     let mut finish: Option<bool> = None;
@@ -431,7 +459,7 @@ fn editor(ui: &mut Ui, r: &mut Review, st: &mut PanelState, id: &str) {
             finish = Some(false);
         }
     }
-    let Some((_, text)) = st.editing.as_mut() else { return };
+    let (_, text) = st.editing.as_mut()?;
     let resp = Frame::NONE
         .fill(theme::SURROUND)
         .stroke(Stroke::new(1.0, theme::PENCIL))
@@ -454,19 +482,16 @@ fn editor(ui: &mut Ui, r: &mut Review, st: &mut PanelState, id: &str) {
     } else if finish.is_none() && resp.lost_focus() {
         finish = Some(true); // clicking elsewhere keeps the edit
     }
-    if let Some(save) = finish
-        && let Some((_, text)) = st.editing.take()
-            && save {
-                r.update_text(id, &text);
-            }
+    let save = finish?;
+    let (_, text) = st.editing.take()?;
+    save.then_some(text)
 }
 
 /// The note's own frame, with its mark drawn on it.
-fn note_frame(ui: &mut Ui, r: &mut Review, cm: &crate::model::Comment, number: usize, h: f32) {
+fn note_frame(ui: &mut Ui, cm: &crate::model::Comment, tex: Option<egui::TextureHandle>, number: usize, h: f32) {
     let (rect, _) = ui.allocate_exact_size(vec2(NOTE_W, h), Sense::hover());
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 3.0, theme::FILM_BASE);
-    let tex = if cm.done { r.thumbs.gray_at(cm.t_in) } else { r.thumbs.at(cm.t_in) };
     let tint = if cm.done { Color32::from_white_alpha(140) } else { Color32::WHITE };
     if let Some(tex) = tex {
         p.add(
