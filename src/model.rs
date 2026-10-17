@@ -47,7 +47,7 @@ pub struct Selection {
     pub scenes: Option<(u32, u32)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
     pub id: String,
     pub text: String,
@@ -161,7 +161,7 @@ fn sidecar(video: &Path, suffix: &str) -> PathBuf {
 
 /// One edit to the notes, keyed by id, so it can be applied again on top of
 /// a list freshly read from disk (when someone else wrote the file meanwhile).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Change {
     /// Adds the note, or replaces the one with the same id (also undoes a delete).
     Put(Comment),
@@ -216,6 +216,12 @@ impl CommentStore {
 
     pub fn backup_file(&self) -> PathBuf {
         sidecar(&self.video, ".comments.json.bak")
+    }
+
+    /// Changes that could not be written yet, kept so they survive a video switch or quit.
+    /// Only this app reads it; the notes file format stays untouched.
+    pub fn pending_file(&self) -> PathBuf {
+        sidecar(&self.video, ".comments.pending.json")
     }
 
     pub fn read_only(&self) -> bool {
@@ -282,6 +288,31 @@ impl CommentStore {
             *comments = fresh;
         }
         self.save(comments, fps).map_err(|e| trf("error.save", &[("err", &e)]))
+    }
+
+    /// Commits `pending`, clearing it on success. Whatever is left is written to
+    /// [`Self::pending_file`] (removed once empty), so it is not lost when the app moves on.
+    pub fn flush(&mut self, comments: &mut Vec<Comment>, pending: &mut Vec<Change>, fps: f64) -> Result<(), String> {
+        let result = self.commit(comments, pending, fps);
+        if result.is_ok() {
+            pending.clear();
+        }
+        let file = self.pending_file();
+        let kept = if pending.is_empty() {
+            match std::fs::remove_file(&file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            }
+        } else {
+            let tmp = sidecar(&file, ".tmp");
+            serde_json::to_vec_pretty(pending).map_err(std::io::Error::from).and_then(|b| std::fs::write(&tmp, b)).and_then(|()| std::fs::rename(&tmp, &file))
+        };
+        result.and(kept.map_err(|e| trf("error.save", &[("err", &e)])))
+    }
+
+    /// Changes a previous session could not write (see [`Self::flush`]).
+    pub fn load_pending(&self) -> Vec<Change> {
+        std::fs::read(self.pending_file()).ok().and_then(|raw| serde_json::from_slice(&raw).ok()).unwrap_or_default()
     }
 
     pub fn save(&mut self, comments: &mut [Comment], fps: f64) -> std::io::Result<()> {
@@ -612,6 +643,36 @@ mod tests {
         assert!(!store.read_only());
         assert_eq!(list.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["f", "x"]);
         assert_eq!(std::fs::read_to_string(store.backup_file()).unwrap(), fixed);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn unsaved_changes_survive_until_the_file_is_fixed() {
+        let (dir, video) = temp_video();
+        let bad = r#"{"comments": [}"#;
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.file(), bad).unwrap();
+        let mut list = store.load().unwrap_or_default();
+        let ch = Change::Put(note("x", 2.0));
+        ch.apply(&mut list);
+        let mut pending = vec![ch];
+        assert!(store.flush(&mut list, &mut pending, 24.0).is_err());
+        assert_eq!(pending.len(), 1, "kept in memory");
+        assert_eq!(std::fs::read_to_string(store.file()).unwrap(), bad);
+
+        // Switch away and back (or quit and reopen): a new store finds them.
+        let mut store = CommentStore::new(&video);
+        let mut pending = store.load_pending();
+        assert_eq!(pending.len(), 1, "kept on disk");
+        std::fs::write(store.file(), r#"{"comments": [{"t_in": 1.0, "text": "fixed", "id": "f"}]}"#).unwrap();
+        let mut list = store.load().unwrap();
+        for ch in &pending {
+            ch.apply(&mut list);
+        }
+        store.flush(&mut list, &mut pending, 24.0).unwrap();
+        assert!(pending.is_empty());
+        assert!(!store.pending_file().exists(), "removed once written");
+        assert_eq!(store.load().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["f", "x"]);
         std::fs::remove_dir_all(dir).ok();
     }
 
