@@ -50,6 +50,17 @@ scene detection; if it is missing, the app still runs and shows a warning.
 With no arguments it reopens the last folder/video (`~/Library/Application Support/video-review/prefs.json`).
 Press `?` in the app for the shortcuts.
 
+## Languages
+
+The UI comes in 12 languages: English, Magyar, Deutsch, Français, Español, Italiano, Português,
+Nederlands, Polski, Русский, 日本語 and 中文. The language is the `lang` code saved in `prefs.json`,
+or the system locale if none is saved (English if that is not supported). The globe button in the
+header (and on the empty screen) switches it at once and saves the choice. Japanese and Chinese use
+a system CJK font, since the bundled fonts lack those glyphs.
+
+Every string key must be in all 12 `assets/i18n/<code>.json` catalogs (`en.json` is the source
+text); a test checks that each catalog has exactly the English keys, placeholders and plural forms.
+
 ## Layout
 
 | File | What |
@@ -59,6 +70,7 @@ Press `?` in the app for the shortcuts.
 | `src/thumbs.rs` | ffmpeg frame grabs, 3 workers, newest request first |
 | `src/review.rs` | all review state and playback control |
 | `src/export.rs` | EDL / FCPXML / Markdown export with frame-exact timecodes |
+| `src/i18n.rs`, `assets/i18n/*.json` | UI strings: one JSON catalog per language, plural rules, English fallback |
 | `src/theme.rs` | palette, fonts, icons |
 | `src/ui/` | app layout, filmstrip + ruler, picture stage, notes panel, grease-pencil marks |
 | `tools/make_fonts.py` | static Archivo/Source Serif instances with tabular figures frozen in |
