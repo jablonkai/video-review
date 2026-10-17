@@ -54,41 +54,52 @@ Read more: README.md in the source repository.
 README
 
 echo "==> creating disk image"
-hdiutil create -srcfolder "$STAGING" -volname "$VOLUME" -ov -format UDZO -fs HFS+ "$TMP_DMG" >/dev/null
+# Read-write working image, so Finder can write .DS_Store into it.
+hdiutil create -srcfolder "$STAGING" -volname "$VOLUME" -ov -format UDRW -fs HFS+ "$TMP_DMG" >/dev/null
 
 echo "==> arranging dmg window"
-hdiutil attach -noautoopen "$TMP_DMG" >/dev/null
-trap 'hdiutil detach "/Volumes/$VOLUME" >/dev/null 2>&1 || true' EXIT
+# Take the mount point from hdiutil's output: if another "Video Review" volume is
+# already mounted, this one lands at "/Volumes/Video Review 1".
+ATTACH_OUT=$(hdiutil attach -readwrite -nobrowse -noverify -noautoopen "$TMP_DMG")
+DEVICE=$(printf '%s\n' "$ATTACH_OUT" | awk 'NR == 1 { print $1 }')
+MOUNT=$(printf '%s\n' "$ATTACH_OUT" | sed -n 's|^.*[[:space:]]\(/Volumes/.*\)$|\1|p' | head -n 1)
+trap 'hdiutil detach "$DEVICE" >/dev/null 2>&1 || true' EXIT
+[ -n "$MOUNT" ] && [ -d "$MOUNT" ] || { echo "error: volume did not mount" >&2; exit 1; }
 
-# Wait until the volume mounts, then have Finder store icon positions in .DS_Store.
-for i in $(seq 1 30); do
-    if [ -d "/Volumes/$VOLUME" ]; then break; fi
-    sleep 0.5
-done
-[ -d "/Volumes/$VOLUME" ] || { echo "error: volume did not mount" >&2; exit 1; }
-sleep 1
+# Have Finder store the window layout and icon positions in .DS_Store. The volume
+# is addressed by path, not by name, so a same-named volume is never touched.
 osascript >/dev/null <<EOF
 tell application "Finder"
-    set d to disk "$VOLUME"
+    set d to item (POSIX file "$MOUNT" as alias)
     open d
     tell container window of d
         set current view to icon view
         set toolbar visible to false
         set statusbar visible to false
         set the bounds to {420, 120, 940, 460}
-        set position of item "$APP" to {160, 190}
-        set position of item "Applications" to {480, 190}
     end tell
+    set arrangement of icon view options of container window of d to not arranged
+    set position of item "$APP" of d to {160, 190}
+    set position of item "Applications" of d to {480, 190}
+    update d without registering applications
     delay 2
-    close d
+    close container window of d
 end tell
 EOF
 
-hdiutil detach "/Volumes/$VOLUME" >/dev/null
+# Finder writes .DS_Store asynchronously; wait for it before detaching.
+for i in $(seq 1 20); do
+    if [ -f "$MOUNT/.DS_Store" ]; then break; fi
+    sleep 0.5
+done
+[ -f "$MOUNT/.DS_Store" ] || echo "warning: Finder wrote no .DS_Store; the dmg window will use the default layout" >&2
+sync
+
+hdiutil detach "$DEVICE" >/dev/null
 trap - EXIT
 
 echo "==> compressing"
-hdiutil convert "$TMP_DMG" -format UDZO -o "$DMG" >/dev/null
+hdiutil convert "$TMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
 rm -f "$TMP_DMG"
 rm -rf "$STAGING"
 
