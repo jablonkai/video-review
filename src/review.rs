@@ -27,6 +27,8 @@ pub enum SpanMode {
     Moment,
     Scene,
     Range,
+    /// The whole video, no time in it.
+    Video,
 }
 
 /// The texture mpv renders into, shown by egui as an ordinary image.
@@ -153,6 +155,8 @@ pub struct Review {
     pub sel: Option<Selection>,
     pub pending_in: Option<f64>,
     pub area: Option<Area>,
+    /// The next note is about the whole video, until a time or place is picked.
+    pub whole_video: bool,
     pub focus_id: Option<String>,
     pub hover_id: Option<String>,
     pub hide_done: bool,
@@ -206,6 +210,7 @@ impl Review {
             sel: None,
             pending_in: None,
             area: None,
+            whole_video: false,
             focus_id: None,
             hover_id: None,
             hide_done: false,
@@ -637,6 +642,7 @@ impl Review {
         let (first, last) = (a.min(b), a.max(b));
         let (Some((t_in, _)), Some((_, t_out))) = (self.scene_range(first), self.scene_range(last)) else { return };
         self.pending_in = None;
+        self.whole_video = false;
         self.sel = Some(Selection { t_in, t_out: Some(t_out), scenes: Some((first, last)) });
     }
 
@@ -662,11 +668,13 @@ impl Review {
 
     pub fn set_range(&mut self, a: f64, b: f64) {
         self.pending_in = None;
+        self.whole_video = false;
         self.sel = range_selection(a, b, self.fps);
     }
 
     pub fn mark_in(&mut self) {
         self.pending_in = Some(self.position());
+        self.whole_video = false;
         self.sel = None;
     }
 
@@ -683,6 +691,7 @@ impl Review {
 
     pub fn clear_all(&mut self) {
         self.focus_id = None;
+        self.whole_video = false;
         self.sel = None;
         self.pending_in = None;
         self.area = None;
@@ -693,14 +702,21 @@ impl Review {
             Some(s) if s.scenes.is_some() => SpanMode::Scene,
             Some(_) => SpanMode::Range,
             None if self.pending_in.is_some() => SpanMode::Range,
+            None if self.whole_video => SpanMode::Video,
             None => SpanMode::Moment,
         }
     }
 
     pub fn set_mode(&mut self, m: SpanMode) {
         self.pause();
+        self.whole_video = false;
         match m {
             SpanMode::Moment => self.clear_time(),
+            SpanMode::Video => {
+                self.clear_time();
+                self.area = None;
+                self.whole_video = true;
+            }
             SpanMode::Scene => {
                 if self.sel.and_then(|s| s.scenes).is_none() && self.scene_count() > 0 {
                     let n = self.scene_at(self.position());
@@ -734,17 +750,20 @@ impl Review {
         if text.is_empty() || self.store.is_none() {
             return;
         }
-        let t = self.draft_target();
+        let general = self.mode() == SpanMode::Video;
+        let t = if general { Selection { t_in: 0.0, t_out: None, scenes: None } } else { self.draft_target() };
         let c = Comment {
             id: Comment::new_id(),
             text: text.to_owned(),
             t_in: t.t_in,
             t_out: t.t_out,
-            area: self.area,
+            area: if general { None } else { self.area },
             scenes: t.scenes,
             done: false,
             created: Some(chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()),
+            general,
         };
+        // `whole_video` stays on, so several general notes can be written in a row.
         self.focus_id = Some(c.id.clone());
         self.sel = None;
         self.pending_in = None;
@@ -816,10 +835,15 @@ impl Review {
 
     pub fn focus_comment(&mut self, id: &str) {
         let Some(c) = self.comments.iter().find(|c| c.id == id).cloned() else { return };
-        self.pause();
         self.focus_id = Some(c.id.clone());
         self.area = None;
         self.pending_in = None;
+        if c.general {
+            // No time to go to: the playhead stays where it is.
+            self.sel = None;
+            return;
+        }
+        self.pause();
         // Scene numbers from another detector may not exist here: keep the time, drop the scenes.
         let scenes = c.scenes.filter(|&(a, b)| self.scene_count() == 0 || (a >= 1 && b <= self.scene_count()));
         self.sel = c.t_out.map(|out| Selection { t_in: c.t_in, t_out: Some(out), scenes });
@@ -828,8 +852,8 @@ impl Review {
 
     pub fn jump_comment(&mut self, dir: i32) {
         let (t, eps) = (self.position(), 1.0 / self.fps);
-        let target =
-            if dir > 0 { self.comments.iter().find(|c| c.t_in > t + eps) } else { self.comments.iter().rev().find(|c| c.t_in < t - eps) };
+        let mut timed = self.comments.iter().filter(|c| !c.general);
+        let target = if dir > 0 { timed.find(|c| c.t_in > t + eps) } else { timed.rev().find(|c| c.t_in < t - eps) };
         if let Some(t_in) = target.map(|c| c.t_in) {
             self.pause();
             self.seek(t_in);
@@ -886,8 +910,12 @@ pub fn range_selection(a: f64, b: f64, fps: f64) -> Option<Selection> {
 }
 
 /// True while `t` is on the note's frame, or inside its range (end exclusive).
+/// A whole-video note has no time, so it is never active.
 pub fn is_active(c: &Comment, t: f64, fps: f64) -> bool {
     let f = |t: f64| model::frame_of(t, fps);
+    if c.general {
+        return false;
+    }
     match c.t_out {
         Some(out) => (f(c.t_in)..f(out)).contains(&f(t)),
         None => f(t) == f(c.t_in),
@@ -978,8 +1006,17 @@ mod tests {
     #[test]
     fn is_active_by_frame() {
         let fps = 25.0;
-        let moment =
-            Comment { id: "m".into(), text: String::new(), t_in: 2.0, t_out: None, area: None, scenes: None, done: false, created: None };
+        let moment = Comment {
+            id: "m".into(),
+            text: String::new(),
+            t_in: 2.0,
+            t_out: None,
+            area: None,
+            scenes: None,
+            done: false,
+            created: None,
+            general: false,
+        };
         assert!(is_active(&moment, 2.0, fps));
         assert!(is_active(&moment, 2.039, fps));
         assert!(!is_active(&moment, 2.04, fps));
@@ -987,5 +1024,7 @@ mod tests {
         assert!(is_active(&range, 3.0, fps));
         assert!(!is_active(&range, 4.0, fps), "end is exclusive");
         assert!(!is_active(&range, 1.9, fps));
+        let general = Comment { t_in: 0.0, t_out: None, general: true, ..range };
+        assert!(!is_active(&general, 0.0, fps), "a whole-video note has no frame");
     }
 }
