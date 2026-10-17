@@ -159,6 +159,14 @@ fn sidecar(video: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// Writes `bytes` to a `.tmp` sidecar and renames it over `path`, so a crash mid-write
+/// never leaves a truncated file for this or the other app versions to read.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = sidecar(path, ".tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
 /// One edit to the notes, keyed by id, so it can be applied again on top of
 /// a list freshly read from disk (when someone else wrote the file meanwhile).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -304,8 +312,7 @@ impl CommentStore {
                 _ => Ok(()),
             }
         } else {
-            let tmp = sidecar(&file, ".tmp");
-            serde_json::to_vec_pretty(pending).map_err(std::io::Error::from).and_then(|b| std::fs::write(&tmp, b)).and_then(|()| std::fs::rename(&tmp, &file))
+            serde_json::to_vec_pretty(pending).map_err(std::io::Error::from).and_then(|b| write_atomic(&file, &b))
         };
         result.and(kept.map_err(|e| trf("error.save", &[("err", &e)])))
     }
@@ -344,10 +351,8 @@ impl CommentStore {
             std::fs::copy(&file, self.backup_file())?;
         }
         self.needs_backup = false;
-        let tmp = sidecar(&file, ".tmp");
         let bytes = serde_json::to_string_pretty(&payload)?.into_bytes();
-        std::fs::write(&tmp, &bytes)?;
-        std::fs::rename(&tmp, &file)?;
+        write_atomic(&file, &bytes)?;
         // What we wrote, not a re-read: a write landing right after the rename still counts as outside.
         self.known = Some(bytes);
         Ok(())
@@ -423,7 +428,9 @@ pub mod scenes {
     pub(super) fn store(video: &Path, cuts: &[f64], analyzed: Option<(u64, f64)>) {
         let Some((size, mtime)) = analyzed.filter(|&a| stamp(video) == Some(a)) else { return };
         let cache = Cache { threshold: THRESHOLD, cuts: cuts.to_vec(), size: Some(size), mtime: Some(mtime) };
-        let _ = std::fs::write(file(video), serde_json::to_string_pretty(&cache).unwrap_or_default());
+        if let Ok(bytes) = serde_json::to_vec_pretty(&cache) {
+            let _ = write_atomic(&file(video), &bytes);
+        }
     }
 
     pub(super) fn parse(text: &str) -> Vec<f64> {
@@ -745,6 +752,17 @@ mod tests {
         Change::Put(removed.clone()).apply(&mut list);
         Change::Put(removed).apply(&mut list);
         assert_eq!(list.len(), 2, "putting back twice keeps one copy");
+    }
+
+    #[test]
+    fn write_atomic_replaces_and_leaves_no_sidecar() {
+        let (dir, video) = temp_video();
+        let file = sidecar(&video, ".scenes.json");
+        write_atomic(&file, b"old").unwrap();
+        write_atomic(&file, b"new").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"new");
+        assert!(!sidecar(&file, ".tmp").exists());
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

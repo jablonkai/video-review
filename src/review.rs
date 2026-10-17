@@ -76,7 +76,9 @@ fn save_prefs(p: &Prefs) {
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let _ = std::fs::write(f, serde_json::to_string_pretty(p).unwrap_or_default());
+    if let Ok(bytes) = serde_json::to_vec_pretty(p) {
+        let _ = model::write_atomic(&f, &bytes);
+    }
 }
 
 /// The last delete or done/undone, and the change that takes it back.
