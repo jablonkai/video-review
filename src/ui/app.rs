@@ -372,6 +372,7 @@ impl App {
 impl eframe::App for App {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.r.save_pending();
+        self.r.flush_volume();
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
@@ -517,7 +518,7 @@ fn volume(ui: &mut Ui, r: &mut Review, row: Rect) -> f32 {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
         if scroll != 0.0 {
             r.set_volume((shown + scroll as f64 * 0.25).round());
-            r.persist_volume();
+            r.persist_volume_soon();
         }
     }
     if resp.drag_stopped() || resp.clicked() {
