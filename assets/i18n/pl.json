@@ -130,6 +130,7 @@
   "error.notes_unreadable": "Plik notatek jest nieczytelny i nie zostanie nadpisany ({name}): {err}",
   "error.save": "Nie można zapisać: {err}",
   "error.notes_broken": "plik notatek jest uszkodzony i nie zostanie nadpisany",
+  "error.note_deleted_elsewhere": "Notatka została w międzyczasie usunięta gdzie indziej, więc ta zmiana nie została zapisana.",
   "error.ffmpeg_missing": "nie znaleziono ffmpeg",
 
   "md.summary": { "one": "{n} notatka, {done} gotowe. Kod czasowy: non-drop frame (NDF).", "few": "{n} notatki, {done} gotowe. Kod czasowy: non-drop frame (NDF).", "many": "{n} notatek, {done} gotowe. Kod czasowy: non-drop frame (NDF).", "other": "{n} notatek, {done} gotowe. Kod czasowy: non-drop frame (NDF)." },

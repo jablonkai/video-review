@@ -287,10 +287,13 @@ impl Review {
                 for ch in &self.pending {
                     ch.apply(&mut list);
                 }
-                self.comments = list;
                 if was_read_only {
                     self.error = None;
                 }
+                if model::edits_lost(&self.pending, &list) {
+                    self.error = Some(tr("error.note_deleted_elsewhere"));
+                }
+                self.comments = list;
                 if !self.pending.is_empty() {
                     self.flush();
                 }
@@ -734,8 +737,12 @@ impl Review {
     /// Applies a change here at once, then writes it to disk.
     fn change(&mut self, ch: Change) {
         ch.apply(&mut self.comments);
-        self.pending.push(ch);
+        self.pending.push(ch.clone());
         self.flush();
+        // The poll or the commit may have found the note deleted elsewhere.
+        if model::edits_lost(&[ch], &self.comments) {
+            self.error = Some(tr("error.note_deleted_elsewhere"));
+        }
     }
 
     fn flush(&mut self) {

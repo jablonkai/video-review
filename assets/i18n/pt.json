@@ -130,6 +130,7 @@
   "error.notes_unreadable": "O arquivo de notas está ilegível e não será sobrescrito ({name}): {err}",
   "error.save": "Não foi possível salvar: {err}",
   "error.notes_broken": "o arquivo de notas está corrompido e não será sobrescrito",
+  "error.note_deleted_elsewhere": "A nota foi excluída em outro lugar nesse meio-tempo, então esta alteração não foi salva.",
   "error.ffmpeg_missing": "ffmpeg não encontrado",
 
   "md.summary": { "one": "{n} nota, {done} concluída. Timecode: non-drop frame (NDF).", "other": "{n} notas, {done} concluídas. Timecode: non-drop frame (NDF)." },

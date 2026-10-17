@@ -130,6 +130,7 @@
   "error.notes_unreadable": "ノートファイルを読み込めないため上書きしません（{name}）: {err}",
   "error.save": "保存できませんでした: {err}",
   "error.notes_broken": "ノートファイルが壊れているため上書きしません",
+  "error.note_deleted_elsewhere": "このノートは別の場所で削除されたため、この変更は保存されませんでした。",
   "error.ffmpeg_missing": "ffmpeg が見つかりません",
 
   "md.summary": { "other": "ノート {n} 件、完了 {done} 件。タイムコード: ノンドロップフレーム (NDF)。" },
