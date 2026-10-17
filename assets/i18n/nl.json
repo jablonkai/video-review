@@ -130,6 +130,7 @@
   "error.notes_unreadable": "Het notitiebestand is onleesbaar en wordt niet overschreven ({name}): {err}",
   "error.save": "Opslaan mislukt: {err}",
   "error.notes_broken": "het notitiebestand is beschadigd en wordt niet overschreven",
+  "error.note_deleted_elsewhere": "De notitie is intussen elders verwijderd, dus deze wijziging is niet opgeslagen.",
   "error.ffmpeg_missing": "ffmpeg niet gevonden",
 
   "md.summary": { "one": "{n} notitie, {done} klaar. Timecode: non-drop frame (NDF).", "other": "{n} notities, {done} klaar. Timecode: non-drop frame (NDF)." },

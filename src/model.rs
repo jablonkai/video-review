@@ -178,13 +178,22 @@ pub enum Change {
     Remove(String),
 }
 
+/// The order notes are listed, navigated and saved in. Stable, so notes at the same time keep their order.
+fn sort_by_time(list: &mut [Comment]) {
+    list.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+}
+
 impl Change {
+    /// Keeps `list` in [`sort_by_time`] order, also when the result can't be saved.
     pub fn apply(&self, list: &mut Vec<Comment>) {
         match self {
-            Change::Put(c) => match list.iter_mut().find(|x| x.id == c.id) {
-                Some(x) => *x = c.clone(),
-                None => list.push(c.clone()),
-            },
+            Change::Put(c) => {
+                match list.iter_mut().find(|x| x.id == c.id) {
+                    Some(x) => *x = c.clone(),
+                    None => list.push(c.clone()),
+                }
+                sort_by_time(list);
+            }
             Change::Text { id, text } => {
                 if let Some(c) = list.iter_mut().find(|c| &c.id == id) {
                     c.text = text.clone();
@@ -198,6 +207,18 @@ impl Change {
             Change::Remove(id) => list.retain(|c| &c.id != id),
         }
     }
+}
+
+/// Whether a text or done edit in `changes` (already applied to `list`) hit a
+/// note that is gone, i.e. was deleted elsewhere, so the edit was dropped. A
+/// later `Remove` of the same note in `changes` is a local delete, not a loss.
+pub fn edits_lost(changes: &[Change], list: &[Comment]) -> bool {
+    changes.iter().enumerate().any(|(i, ch)| match ch {
+        Change::Text { id, .. } | Change::Done { id, .. } => {
+            !list.iter().any(|c| &c.id == id) && !changes[i + 1..].iter().any(|l| matches!(l, Change::Remove(r) if r == id))
+        }
+        _ => false,
+    })
 }
 
 /// Reads and writes `<video>.comments.json` next to the video.
@@ -292,7 +313,7 @@ impl CommentStore {
                 }
             })
             .collect();
-        list.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+        sort_by_time(&mut list);
         Ok(list)
     }
 
@@ -344,7 +365,7 @@ impl CommentStore {
             Fps::Known(f) => f,
             Fps::Estimate(f) => self.file_fps.unwrap_or(f),
         };
-        comments.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+        sort_by_time(comments);
         let payload = FileJson {
             video: self.video.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             fps,
@@ -844,6 +865,50 @@ mod tests {
         Change::Put(removed.clone()).apply(&mut list);
         Change::Put(removed).apply(&mut list);
         assert_eq!(list.len(), 2, "putting back twice keeps one copy");
+    }
+
+    #[test]
+    fn edit_of_a_note_deleted_elsewhere_is_reported() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0), note("b", 2.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+        // Another app deletes "a" while it is being edited here.
+        let mut other = CommentStore::new(&video);
+        let mut theirs = other.load().unwrap();
+        theirs.retain(|c| c.id != "a");
+        other.save(&mut theirs, Fps::Known(24.0)).unwrap();
+        let edits = [Change::Text { id: "a".into(), text: "new".into() }, Change::Done { id: "b".into(), done: true }];
+        for ch in &edits {
+            ch.apply(&mut list);
+        }
+        assert!(!edits_lost(&edits, &list), "still there before the commit");
+        store.commit(&mut list, &edits, Fps::Known(24.0)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(edits_lost(&edits, &list));
+        assert!(!edits_lost(&edits[1..], &list), "the edit of a note that is still there is not lost");
+        // An edit followed by a local delete of the same note is not a loss.
+        let deleted = [Change::Text { id: "b".into(), text: "x".into() }, Change::Remove("b".into())];
+        assert!(!edits_lost(&deleted, &[]));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn put_keeps_time_order_while_the_file_is_broken() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.file(), "{").unwrap();
+        assert!(store.load().is_err());
+        let mut list = vec![note("a", 5.0), note("c", 60.0)];
+        let mut pending = Vec::new();
+        for ch in [Change::Put(note("b", 50.0)), Change::Put(note("a", 70.0))] {
+            ch.apply(&mut list);
+            pending.push(ch);
+            assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
+        }
+        let ids: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["b", "c", "a"], "a new or moved note goes in by time, like save() orders it");
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

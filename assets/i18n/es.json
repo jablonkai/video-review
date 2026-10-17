@@ -130,6 +130,7 @@
   "error.notes_unreadable": "El archivo de notas es ilegible y no se sobrescribirá ({name}): {err}",
   "error.save": "No se pudo guardar: {err}",
   "error.notes_broken": "el archivo de notas está dañado y no se sobrescribirá",
+  "error.note_deleted_elsewhere": "La nota se borró en otro lugar mientras tanto, así que este cambio no se guardó.",
   "error.ffmpeg_missing": "ffmpeg no encontrado",
 
   "md.summary": { "one": "{n} nota, {done} hecha. Código de tiempo: non-drop frame (NDF).", "other": "{n} notas, {done} hechas. Código de tiempo: non-drop frame (NDF)." },

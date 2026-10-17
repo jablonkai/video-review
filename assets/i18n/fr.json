@@ -130,6 +130,7 @@
   "error.notes_unreadable": "Le fichier de notes est illisible et ne sera pas écrasé ({name}) : {err}",
   "error.save": "Enregistrement impossible : {err}",
   "error.notes_broken": "le fichier de notes est corrompu et ne sera pas écrasé",
+  "error.note_deleted_elsewhere": "La note a été supprimée ailleurs entre-temps, cette modification n'a donc pas été enregistrée.",
   "error.ffmpeg_missing": "ffmpeg introuvable",
 
   "md.summary": { "one": "{n} note, {done} faite. Timecode : non-drop frame (NDF).", "other": "{n} notes, {done} faites. Timecode : non-drop frame (NDF)." },

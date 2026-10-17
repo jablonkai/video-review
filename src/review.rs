@@ -81,6 +81,32 @@ fn save_prefs(p: &Prefs) {
     }
 }
 
+/// Fires once, `delay` after the last `poke`: one write per burst of changes.
+struct Debounce {
+    delay: Duration,
+    due: Option<Instant>,
+}
+
+impl Debounce {
+    const fn new(delay: Duration) -> Self {
+        Self { delay, due: None }
+    }
+
+    fn poke(&mut self, now: Instant) {
+        self.due = Some(now + self.delay);
+    }
+
+    /// True once when the delay has passed since the last poke.
+    fn fire(&mut self, now: Instant) -> bool {
+        self.due.take_if(|due| now >= *due).is_some()
+    }
+
+    /// Drops what is waiting; true if something was.
+    fn take(&mut self) -> bool {
+        self.due.take().is_some()
+    }
+}
+
 /// The last delete or done/undone, and the change that takes it back.
 pub struct Undo {
     /// Catalog key of the notice (`undo.*`), translated when shown.
@@ -88,6 +114,8 @@ pub struct Undo {
     change: Change,
     pub at: Instant,
 }
+
+const VOLUME_SAVE_DELAY: Duration = Duration::from_millis(500);
 
 pub struct Review {
     ctx: egui::Context,
@@ -133,6 +161,8 @@ pub struct Review {
     /// 0..100, as mpv counts it.
     pub volume: f64,
     pub muted: bool,
+    /// Scroll steps on the volume slider, saved once the wheel rests.
+    volume_save: Debounce,
 
     // ---- playhead ----
     pos: f64,
@@ -182,6 +212,7 @@ impl Review {
             hover_info: String::new(),
             volume: prefs.volume,
             muted: prefs.muted,
+            volume_save: Debounce::new(VOLUME_SAVE_DELAY),
             pos: 0.0,
             pos_at: Instant::now(),
             last_check: Instant::now(),
@@ -259,6 +290,9 @@ impl Review {
                 }
             }
         }
+        if self.volume_save.fire(Instant::now()) {
+            self.persist_volume();
+        }
         if self.last_check.elapsed() > Duration::from_secs(4) {
             self.last_check = Instant::now();
             // An unreadable file is tried again on every poll until it parses, and
@@ -287,10 +321,13 @@ impl Review {
                 for ch in &self.pending {
                     ch.apply(&mut list);
                 }
-                self.comments = list;
                 if was_read_only {
                     self.error = None;
                 }
+                if model::edits_lost(&self.pending, &list) {
+                    self.error = Some(tr("error.note_deleted_elsewhere"));
+                }
+                self.comments = list;
                 if !self.pending.is_empty() {
                     self.flush();
                 }
@@ -515,11 +552,26 @@ impl Review {
     }
 
     /// Remembered for the next start. Called when a change is finished, not on every drag step.
-    pub fn persist_volume(&self) {
+    pub fn persist_volume(&mut self) {
+        self.volume_save.take();
         let mut prefs = load_prefs();
         prefs.volume = self.volume;
         prefs.muted = self.muted;
         save_prefs(&prefs);
+    }
+
+    /// `persist_volume` once no further call comes for a moment; for the wheel, which has no "finished".
+    pub fn persist_volume_soon(&mut self) {
+        self.volume_save.poke(Instant::now());
+        // No input may follow to wake the UI when the delay is up.
+        self.ctx.request_repaint_after(VOLUME_SAVE_DELAY);
+    }
+
+    /// Writes a volume change still waiting in `persist_volume_soon`. Call on exit.
+    pub fn flush_volume(&mut self) {
+        if self.volume_save.take() {
+            self.persist_volume();
+        }
     }
 
     /// Switches the UI language now, remembers it, and adds the system font it may need.
@@ -734,8 +786,12 @@ impl Review {
     /// Applies a change here at once, then writes it to disk.
     fn change(&mut self, ch: Change) {
         ch.apply(&mut self.comments);
-        self.pending.push(ch);
+        self.pending.push(ch.clone());
         self.flush();
+        // The poll or the commit may have found the note deleted elsewhere.
+        if model::edits_lost(&[ch], &self.comments) {
+            self.error = Some(tr("error.note_deleted_elsewhere"));
+        }
     }
 
     fn flush(&mut self) {
@@ -842,6 +898,23 @@ mod tests {
     use super::*;
 
     const CUTS: [f64; 3] = [2.0, 5.0, 9.0];
+
+    #[test]
+    fn debounce_fires_once_after_the_last_poke() {
+        let ms = Duration::from_millis;
+        let t0 = Instant::now();
+        let mut d = Debounce::new(ms(500));
+        assert!(!d.fire(t0 + ms(1000)), "nothing poked");
+        d.poke(t0);
+        d.poke(t0 + ms(300));
+        assert!(!d.fire(t0 + ms(600)), "the second poke pushes the deadline back");
+        assert!(d.fire(t0 + ms(800)));
+        assert!(!d.fire(t0 + ms(2000)), "fires only once");
+        d.poke(t0);
+        assert!(d.take());
+        assert!(!d.take());
+        assert!(!d.fire(t0 + ms(2000)), "taken, so nothing left to fire");
+    }
 
     #[test]
     fn display_size_applies_pixel_aspect_and_rotation() {
