@@ -112,8 +112,10 @@ const OBSERVED: &[(&str, c_int)] = &[
     ("pause", FORMAT_FLAG),
     ("container-fps", FORMAT_DOUBLE),
     ("estimated-vf-fps", FORMAT_DOUBLE),
-    ("width", FORMAT_INT64),
-    ("height", FORMAT_INT64),
+    // Pixel aspect applied, rotation not (see `Review::refresh_size`).
+    ("video-params/dw", FORMAT_INT64),
+    ("video-params/dh", FORMAT_INT64),
+    ("video-params/rotate", FORMAT_INT64),
 ];
 
 type Waker = Box<dyn Fn() + Send + Sync>;
