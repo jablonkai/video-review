@@ -13,7 +13,7 @@ mod ui;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
-    let paths: Vec<PathBuf> = std::env::args().skip(1).filter(|a| !a.starts_with('-')).map(PathBuf::from).collect();
+    let paths: Vec<PathBuf> = std::env::args().skip(1).filter(|a| !a.starts_with('-')).map(absolutize).collect();
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Glow,
         viewport: egui::ViewportBuilder::default()
@@ -28,4 +28,24 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, paths).map_err(|e| e.to_string())?))),
     )
+}
+
+/// Paths are saved as the last session, so make them independent of the
+/// working directory (a Finder launch runs in `/`).
+fn absolutize(arg: String) -> PathBuf {
+    let path = PathBuf::from(arg);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_paths_become_absolute() {
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(absolutize("clip.mov".into()), cwd.join("clip.mov"));
+        assert!(absolutize(".".into()).is_absolute());
+        assert_eq!(absolutize("/v/a.mp4".into()), PathBuf::from("/v/a.mp4"));
+    }
 }
