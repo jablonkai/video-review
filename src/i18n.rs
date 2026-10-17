@@ -146,7 +146,8 @@ type Catalog = HashMap<String, Entry>;
 
 fn catalog(lang: Lang) -> &'static Catalog {
     static CATALOGS: [OnceLock<Catalog>; 12] = [const { OnceLock::new() }; 12];
-    CATALOGS[lang as usize].get_or_init(|| serde_json::from_str(lang.source()).unwrap_or_else(|e| panic!("assets/i18n/{}.json: {e}", lang.code())))
+    CATALOGS[lang as usize]
+        .get_or_init(|| serde_json::from_str(lang.source()).unwrap_or_else(|e| panic!("assets/i18n/{}.json: {e}", lang.code())))
 }
 
 static CURRENT: AtomicU8 = AtomicU8::new(Lang::En as u8);

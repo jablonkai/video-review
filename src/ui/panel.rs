@@ -58,11 +58,7 @@ pub fn panel(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
 
     if r.comments.is_empty() {
         Frame::NONE.inner_margin(Margin { left: 20, right: 24, top: 8, bottom: 0 }).show(ui, |ui| {
-            ui.label(
-                RichText::new(tr("panel.empty"))
-                .font(font(Face::Note, 14.0))
-                .color(theme::MUTED),
-            );
+            ui.label(RichText::new(tr("panel.empty")).font(font(Face::Note, 14.0)).color(theme::MUTED));
         });
         return;
     }
@@ -129,7 +125,8 @@ fn notices(ui: &mut Ui, r: &mut Review) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(tr(label)).font(font(Face::Ui, 12.5)).color(theme::PAPER));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let b = egui::Button::new(RichText::new(tr("panel.undo")).font(font(Face::UiStrong, 12.5)).color(theme::PENCIL)).frame(false);
+                        let b = egui::Button::new(RichText::new(tr("panel.undo")).font(font(Face::UiStrong, 12.5)).color(theme::PENCIL))
+                            .frame(false);
                         if ui.add(b).on_hover_text("Cmd+Z").clicked() {
                             r.undo();
                         }
@@ -283,7 +280,10 @@ fn target(ui: &mut Ui, r: &mut Review) {
     if let Some(pi) = r.pending_in {
         clear_time |= line(ui, icon::FIRST_PAGE, &trf("target.in_point", &[("tc", &r.tc(pi))]), theme::LEADER, true);
     } else if let (Some(sc), Some(out)) = (t.scenes, t.t_out) {
-        let s = trf("target.scene_range", &[("scenes", &Review::scene_label(sc)), ("a", &r.tc(t.t_in)), ("b", &r.tc(out)), ("secs", &secs(t.t_in, out))]);
+        let s = trf(
+            "target.scene_range",
+            &[("scenes", &Review::scene_label(sc)), ("a", &r.tc(t.t_in)), ("b", &r.tc(out)), ("secs", &secs(t.t_in, out))],
+        );
         clear_time |= line(ui, icon::MOVIE, &s, theme::LEADER, true);
     } else if let Some(out) = t.t_out {
         let s = trf("target.range", &[("a", &r.tc(t.t_in)), ("b", &r.tc(out)), ("secs", &secs(t.t_in, out))]);
@@ -350,11 +350,7 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (
             // Active marker: lit while the playhead is inside the note's time.
             let (bar, _) = ui.allocate_exact_size(vec2(3.0, frame_h + 20.0), Sense::hover());
             if active {
-                ui.painter().rect_filled(
-                    Rect::from_min_size(pos2(bar.left(), bar.top() + 10.0), vec2(3.0, frame_h)),
-                    2.0,
-                    theme::PENCIL,
-                );
+                ui.painter().rect_filled(Rect::from_min_size(pos2(bar.left(), bar.top() + 10.0), vec2(3.0, frame_h)), 2.0, theme::PENCIL);
             }
             ui.add_space(9.0);
             ui.vertical(|ui| {
@@ -382,7 +378,13 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (
                     }
                     job.wrap.max_rows = 1;
                     job.wrap.break_anywhere = true;
-                    let tools_w = if was_hovered || armed { 92.0 } else if cm.done { 30.0 } else { 0.0 };
+                    let tools_w = if was_hovered || armed {
+                        92.0
+                    } else if cm.done {
+                        30.0
+                    } else {
+                        0.0
+                    };
                     let avail = (ui.available_width() - tools_w).max(40.0);
                     ui.allocate_ui_with_layout(vec2(avail, 26.0), Layout::left_to_right(Align::Center), |ui| {
                         ui.add(egui::Label::new(job).truncate());
@@ -394,9 +396,11 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (
                         }
                         if was_hovered || armed {
                             if armed {
-                                let b = egui::Button::new(RichText::new(tr("note.delete_confirm")).font(font(Face::UiStrong, 12.0)).color(theme::RED))
-                                    .frame(false)
-                                    .min_size(vec2(0.0, 26.0));
+                                let b = egui::Button::new(
+                                    RichText::new(tr("note.delete_confirm")).font(font(Face::UiStrong, 12.0)).color(theme::RED),
+                                )
+                                .frame(false)
+                                .min_size(vec2(0.0, 26.0));
                                 if ui.add(b).clicked() {
                                     st.armed_delete = None;
                                     action = Some(RowAction::Remove);
@@ -510,10 +514,7 @@ fn note_frame(ui: &mut Ui, cm: &crate::model::Comment, tex: Option<egui::Texture
     p.rect_filled(rect, 3.0, theme::FILM_BASE);
     let tint = if cm.done { Color32::from_white_alpha(140) } else { Color32::WHITE };
     if let Some(tex) = tex {
-        p.add(
-            egui::epaint::RectShape::filled(rect, 3.0, tint)
-                .with_texture(tex.id(), cover_uv(tex.size(), rect)),
-        );
+        p.add(egui::epaint::RectShape::filled(rect, 3.0, tint).with_texture(tex.id(), cover_uv(tex.size(), rect)));
     }
     if let Some(area) = cm.area {
         GreasePencil::new(&cm.id).draw(&p, rect, &area, 1.8, false);
@@ -549,13 +550,7 @@ mod tests {
         let mut seen = (false, false);
         for pass in 0..3 {
             let events = if pass == 2 {
-                vec![egui::Event::Key {
-                    key: Key::Escape,
-                    physical_key: None,
-                    pressed: true,
-                    repeat: false,
-                    modifiers: egui::Modifiers::NONE,
-                }]
+                vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }]
             } else {
                 vec![]
             };
@@ -570,8 +565,7 @@ mod tests {
                     resp.request_focus();
                 }
                 if pass == 2 {
-                    seen.1 = ui.memory(|m| m.has_focus(id))
-                        && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
+                    seen.1 = ui.memory(|m| m.has_focus(id)) && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
                 }
             });
             out.textures_delta.clear();

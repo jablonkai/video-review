@@ -258,11 +258,13 @@ impl Review {
                     // Demuxer values are known as soon as the file is open; decoder ones may lag.
                     if let (Some(w), Some(h)) =
                         (self.mpv.get_int("current-tracks/video/demux-w"), self.mpv.get_int("current-tracks/video/demux-h"))
-                        && w > 0 && h > 0 {
-                            let par = self.mpv.get_double("current-tracks/video/demux-par").filter(|p| *p > 0.0).unwrap_or(1.0);
-                            let rotate = self.mpv.get_int("current-tracks/video/demux-rotation").unwrap_or(0);
-                            (self.video_w, self.video_h) = display_size(w, h, par, rotate);
-                        }
+                        && w > 0
+                        && h > 0
+                    {
+                        let par = self.mpv.get_double("current-tracks/video/demux-par").filter(|p| *p > 0.0).unwrap_or(1.0);
+                        let rotate = self.mpv.get_int("current-tracks/video/demux-rotation").unwrap_or(0);
+                        (self.video_w, self.video_h) = display_size(w, h, par, rotate);
+                    }
                     if let Some(f) = self.mpv.get_double("container-fps").filter(|f| *f > 1.0 && *f < 1000.0) {
                         self.fps = f;
                         self.fps_known = true;
@@ -307,10 +309,12 @@ impl Review {
     /// rotation, which the renderer applies after them.
     fn refresh_size(&mut self) {
         if let (Some(w), Some(h)) = (self.mpv.get_int("video-params/dw"), self.mpv.get_int("video-params/dh"))
-            && w > 0 && h > 0 {
-                let rotate = self.mpv.get_int("video-params/rotate").unwrap_or(0);
-                (self.video_w, self.video_h) = display_size(w, h, 1.0, rotate);
-            }
+            && w > 0
+            && h > 0
+        {
+            let rotate = self.mpv.get_int("video-params/rotate").unwrap_or(0);
+            (self.video_w, self.video_h) = display_size(w, h, 1.0, rotate);
+        }
     }
 
     fn reload(&mut self) {
@@ -824,11 +828,8 @@ impl Review {
 
     pub fn jump_comment(&mut self, dir: i32) {
         let (t, eps) = (self.position(), 1.0 / self.fps);
-        let target = if dir > 0 {
-            self.comments.iter().find(|c| c.t_in > t + eps)
-        } else {
-            self.comments.iter().rev().find(|c| c.t_in < t - eps)
-        };
+        let target =
+            if dir > 0 { self.comments.iter().find(|c| c.t_in > t + eps) } else { self.comments.iter().rev().find(|c| c.t_in < t - eps) };
         if let Some(t_in) = target.map(|c| c.t_in) {
             self.pause();
             self.seek(t_in);
@@ -977,7 +978,8 @@ mod tests {
     #[test]
     fn is_active_by_frame() {
         let fps = 25.0;
-        let moment = Comment { id: "m".into(), text: String::new(), t_in: 2.0, t_out: None, area: None, scenes: None, done: false, created: None };
+        let moment =
+            Comment { id: "m".into(), text: String::new(), t_in: 2.0, t_out: None, area: None, scenes: None, done: false, created: None };
         assert!(is_active(&moment, 2.0, fps));
         assert!(is_active(&moment, 2.039, fps));
         assert!(!is_active(&moment, 2.04, fps));

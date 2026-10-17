@@ -50,10 +50,7 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     let norm = |p: Pos2| -> (f64, f64) {
-        (
-            ((p.x - frame.left()) / frame.width()).clamp(0.0, 1.0) as f64,
-            ((p.y - frame.top()) / frame.height()).clamp(0.0, 1.0) as f64,
-        )
+        (((p.x - frame.left()) / frame.width()).clamp(0.0, 1.0) as f64, ((p.y - frame.top()) / frame.height()).clamp(0.0, 1.0) as f64)
     };
 
     let mut placed = false;
@@ -69,10 +66,11 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
     } else if let Some(s) = drag.start {
         if down {
             if let Some(p) = pointer
-                && (drag.moved || (p - s).length() >= 6.0) {
-                    drag.moved = true;
-                    r.area = Some(drag_area(norm(s), norm(p)));
-                }
+                && (drag.moved || (p - s).length() >= 6.0)
+            {
+                drag.moved = true;
+                r.area = Some(drag_area(norm(s), norm(p)));
+            }
         } else {
             if !drag.moved {
                 let (x, y) = norm(s);

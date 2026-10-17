@@ -99,10 +99,7 @@ impl GreasePencil {
                     .map(|i| {
                         let t = i as f32 / 16.0;
                         let u = 1.0 - t;
-                        pos2(
-                            u * u * s.x + 2.0 * u * t * mid.x + t * t * e.x,
-                            u * u * s.y + 2.0 * u * t * mid.y + t * t * e.y,
-                        )
+                        pos2(u * u * s.x + 2.0 * u * t * mid.x + t * t * e.x, u * u * s.y + 2.0 * u * t * mid.y + t * t * e.y)
                     })
                     .collect()
             })
