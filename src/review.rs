@@ -8,7 +8,7 @@ use eframe::glow::{self, HasContext};
 
 use crate::i18n::{self, Lang, tr, trf};
 use crate::model::scenes::Detection;
-use crate::model::{self, Area, Change, Comment, CommentStore, Selection};
+use crate::model::{self, Area, Change, Comment, CommentStore, Fps, Selection};
 use crate::mpv::{Event, Mpv};
 use crate::theme;
 use crate::thumbs::Thumbnails;
@@ -795,7 +795,7 @@ impl Review {
     }
 
     fn flush(&mut self) {
-        let fps = self.fps;
+        let fps = if self.fps_known { Fps::Known(self.fps) } else { Fps::Estimate(self.fps) };
         let Some(store) = &mut self.store else { return };
         // Kept in `pending` (and its file) while the notes file is unreadable; the poll retries.
         if let Err(e) = store.flush(&mut self.comments, &mut self.pending, fps) {

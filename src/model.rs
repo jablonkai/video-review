@@ -232,11 +232,22 @@ pub struct CommentStore {
     read_only: bool,
     /// Copy the file to `.bak` before the next write, because it was broken once.
     needs_backup: bool,
+    /// The `fps` in the file as last read or written; kept while ours is only an estimate.
+    file_fps: Option<f64>,
+}
+
+/// The frame rate a save writes, with how sure the player is about it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Fps {
+    /// From the container: written as is.
+    Known(f64),
+    /// A guess (decoder estimate or the 24 fps default): the file's own value wins.
+    Estimate(f64),
 }
 
 impl CommentStore {
     pub fn new(video: &Path) -> Self {
-        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false }
+        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false, file_fps: None }
     }
 
     pub fn file(&self) -> PathBuf {
@@ -281,6 +292,7 @@ impl CommentStore {
             }
         };
         self.read_only = false;
+        self.file_fps = Some(data.fps).filter(|f| *f > 1.0 && *f < 1000.0);
         let mut list: Vec<Comment> = data
             .comments
             .into_iter()
@@ -308,7 +320,7 @@ impl CommentStore {
     /// Writes `changes` (already applied to `comments`) to disk. If the file
     /// changed on disk or was unreadable, it is read again first and the
     /// changes are applied on top, so an outside edit is not lost.
-    pub fn commit(&mut self, comments: &mut Vec<Comment>, changes: &[Change], fps: f64) -> Result<(), String> {
+    pub fn commit(&mut self, comments: &mut Vec<Comment>, changes: &[Change], fps: Fps) -> Result<(), String> {
         if self.read_only || self.changed_externally() {
             let mut fresh = self.load()?;
             for ch in changes {
@@ -321,7 +333,7 @@ impl CommentStore {
 
     /// Commits `pending`, clearing it on success. Whatever is left is written to
     /// [`Self::pending_file`] (removed once empty), so it is not lost when the app moves on.
-    pub fn flush(&mut self, comments: &mut Vec<Comment>, pending: &mut Vec<Change>, fps: f64) -> Result<(), String> {
+    pub fn flush(&mut self, comments: &mut Vec<Comment>, pending: &mut Vec<Change>, fps: Fps) -> Result<(), String> {
         let result = self.commit(comments, pending, fps);
         if result.is_ok() {
             pending.clear();
@@ -343,10 +355,16 @@ impl CommentStore {
         std::fs::read(self.pending_file()).ok().and_then(|raw| serde_json::from_slice(&raw).ok()).unwrap_or_default()
     }
 
-    pub fn save(&mut self, comments: &mut [Comment], fps: f64) -> std::io::Result<()> {
+    /// Until the real frame rate is known, the file's `fps` (and the frame numbers
+    /// from it) is kept, so values written by the other versions aren't replaced by a guess.
+    pub fn save(&mut self, comments: &mut [Comment], fps: Fps) -> std::io::Result<()> {
         if self.read_only {
             return Err(std::io::Error::other(tr("error.notes_broken")));
         }
+        let fps = match fps {
+            Fps::Known(f) => f,
+            Fps::Estimate(f) => self.file_fps.unwrap_or(f),
+        };
         sort_by_time(comments);
         let payload = FileJson {
             video: self.video.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -376,6 +394,7 @@ impl CommentStore {
         write_atomic(&file, &bytes)?;
         // What we wrote, not a re-read: a write landing right after the rename still counts as outside.
         self.known = Some(bytes);
+        self.file_fps = Some(fps);
         Ok(())
     }
 
@@ -660,7 +679,7 @@ mod tests {
             },
             Comment { id: "a".into(), text: "first".into(), t_in: 25.36, t_out: None, area: None, scenes: None, done: true, created: Some("2026-10-16T01:00:00".into()) },
         ];
-        store.save(&mut list, 24.0).unwrap();
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
         let raw = std::fs::read_to_string(store.file()).unwrap();
         assert!(raw.contains("\"frame_in\": 608"), "{raw}");
         assert!(raw.contains("\"x\": 0.1235"));
@@ -703,15 +722,15 @@ mod tests {
         assert!(store.read_only());
 
         let mut list = vec![note("x", 2.0)];
-        assert!(store.save(&mut list, 24.0).is_err());
-        assert!(store.commit(&mut list, &[Change::Put(note("x", 2.0))], 24.0).is_err());
+        assert!(store.save(&mut list, Fps::Known(24.0)).is_err());
+        assert!(store.commit(&mut list, &[Change::Put(note("x", 2.0))], Fps::Known(24.0)).is_err());
         assert_eq!(std::fs::read_to_string(store.file()).unwrap(), bad, "the broken file stays as it was");
         assert_eq!(list.len(), 1, "the in-memory list is kept");
 
         // Someone fixes the file: the next write goes through, after a backup.
         let fixed = r#"{"comments": [{"t_in": 1.0, "text": "fixed", "id": "f"}]}"#;
         std::fs::write(store.file(), fixed).unwrap();
-        store.commit(&mut list, &[Change::Put(note("x", 2.0))], 24.0).unwrap();
+        store.commit(&mut list, &[Change::Put(note("x", 2.0))], Fps::Known(24.0)).unwrap();
         assert!(!store.read_only());
         assert_eq!(list.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["f", "x"]);
         assert_eq!(std::fs::read_to_string(store.backup_file()).unwrap(), fixed);
@@ -728,7 +747,7 @@ mod tests {
         let ch = Change::Put(note("x", 2.0));
         ch.apply(&mut list);
         let mut pending = vec![ch];
-        assert!(store.flush(&mut list, &mut pending, 24.0).is_err());
+        assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
         assert_eq!(pending.len(), 1, "kept in memory");
         assert_eq!(std::fs::read_to_string(store.file()).unwrap(), bad);
 
@@ -741,7 +760,7 @@ mod tests {
         for ch in &pending {
             ch.apply(&mut list);
         }
-        store.flush(&mut list, &mut pending, 24.0).unwrap();
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
         assert!(pending.is_empty());
         assert!(!store.pending_file().exists(), "removed once written");
         assert_eq!(store.load().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["f", "x"]);
@@ -753,19 +772,19 @@ mod tests {
         let (dir, video) = temp_video();
         let mut store = CommentStore::new(&video);
         let mut list = vec![note("a", 1.0), note("b", 2.0)];
-        store.save(&mut list, 24.0).unwrap();
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
 
         // Another tool adds "c" and edits "a"; make sure the mtime differs.
         std::thread::sleep(std::time::Duration::from_millis(20));
         let mut theirs = vec![note("a", 1.0), note("b", 2.0), note("c", 3.0)];
         theirs[0].text = "edited elsewhere".into();
-        CommentStore::new(&video).save(&mut theirs, 24.0).unwrap();
+        CommentStore::new(&video).save(&mut theirs, Fps::Known(24.0)).unwrap();
         assert!(store.changed_externally());
 
         // Here, "b" is marked done before the poll noticed anything.
         let ch = Change::Done { id: "b".into(), done: true };
         ch.apply(&mut list);
-        store.commit(&mut list, &[ch], 24.0).unwrap();
+        store.commit(&mut list, &[ch], Fps::Known(24.0)).unwrap();
 
         let back = store.load().unwrap();
         assert_eq!(back.len(), 3);
@@ -781,22 +800,55 @@ mod tests {
         let (dir, video) = temp_video();
         let mut store = CommentStore::new(&video);
         let mut list = vec![note("a", 1.0)];
-        store.save(&mut list, 24.0).unwrap();
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
         let mtime = std::fs::metadata(store.file()).unwrap().modified().unwrap();
 
         // Another app writes within the same timestamp tick (coarse FAT/SMB mtimes).
         let mut theirs = vec![note("a", 1.0), note("c", 3.0)];
-        CommentStore::new(&video).save(&mut theirs, 24.0).unwrap();
+        CommentStore::new(&video).save(&mut theirs, Fps::Known(24.0)).unwrap();
         std::fs::File::options().write(true).open(store.file()).unwrap().set_modified(mtime).unwrap();
         assert!(store.changed_externally());
 
         let ch = Change::Put(note("b", 2.0));
         ch.apply(&mut list);
-        store.commit(&mut list, &[ch], 24.0).unwrap();
+        store.commit(&mut list, &[ch], Fps::Known(24.0)).unwrap();
         let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
         assert_eq!(ids, ["a", "b", "c"]);
         assert!(!store.changed_externally());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn estimated_fps_keeps_the_files_rate() {
+        let (dir, video) = temp_video();
+        let raw = |store: &CommentStore| std::fs::read_to_string(store.file()).unwrap();
+        // Written by another version that knew the rate.
+        let mut store = CommentStore::new(&video);
+        store.save(&mut [note("a", 2.0)], Fps::Known(25.0)).unwrap();
+
+        // Reopened before the container rate is known: the file's 25 fps stays.
+        let mut store = CommentStore::new(&video);
+        let mut list = store.load().unwrap();
+        let ch = Change::Put(note("b", 4.0));
+        ch.apply(&mut list);
+        store.commit(&mut list, &[ch], Fps::Estimate(29.5)).unwrap();
+        assert!(raw(&store).contains("\"fps\": 25.0"), "{}", raw(&store));
+        assert!(raw(&store).contains("\"frame_in\": 100"), "frames from the file's rate");
+
+        // Once known, the real rate is written.
+        store.save(&mut list, Fps::Known(30.0)).unwrap();
+        assert!(raw(&store).contains("\"fps\": 30.0"));
+        assert!(raw(&store).contains("\"frame_in\": 120"));
+
+        // A file without a rate takes the estimate.
+        let (dir2, video2) = temp_video();
+        let mut store = CommentStore::new(&video2);
+        store.load().unwrap();
+        store.save(&mut [note("a", 2.0)], Fps::Estimate(29.5)).unwrap();
+        assert!(raw(&store).contains("\"fps\": 29.5"));
+        assert!(raw(&store).contains("\"frame_in\": 59"));
+        std::fs::remove_dir_all(dir).ok();
+        std::fs::remove_dir_all(dir2).ok();
     }
 
     #[test]
@@ -820,18 +872,18 @@ mod tests {
         let (dir, video) = temp_video();
         let mut store = CommentStore::new(&video);
         let mut list = vec![note("a", 1.0), note("b", 2.0)];
-        store.save(&mut list, 24.0).unwrap();
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
         // Another app deletes "a" while it is being edited here.
         let mut other = CommentStore::new(&video);
         let mut theirs = other.load().unwrap();
         theirs.retain(|c| c.id != "a");
-        other.save(&mut theirs, 24.0).unwrap();
+        other.save(&mut theirs, Fps::Known(24.0)).unwrap();
         let edits = [Change::Text { id: "a".into(), text: "new".into() }, Change::Done { id: "b".into(), done: true }];
         for ch in &edits {
             ch.apply(&mut list);
         }
         assert!(!edits_lost(&edits, &list), "still there before the commit");
-        store.commit(&mut list, &edits, 24.0).unwrap();
+        store.commit(&mut list, &edits, Fps::Known(24.0)).unwrap();
         assert_eq!(list.len(), 1);
         assert!(edits_lost(&edits, &list));
         assert!(!edits_lost(&edits[1..], &list), "the edit of a note that is still there is not lost");
@@ -852,7 +904,7 @@ mod tests {
         for ch in [Change::Put(note("b", 50.0)), Change::Put(note("a", 70.0))] {
             ch.apply(&mut list);
             pending.push(ch);
-            assert!(store.flush(&mut list, &mut pending, 24.0).is_err());
+            assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
         }
         let ids: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, ["b", "c", "a"], "a new or moved note goes in by time, like save() orders it");
