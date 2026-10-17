@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex, Once, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -198,6 +198,7 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
             .arg(&job.video)
             .args(["-frames:v", "1", "-vf", &format!("scale={WIDTH}:-2"), "-q:v", "4", "-f", "mjpeg", "-y"])
             .arg(&tmp)
+            .stdin(Stdio::null())
             .status()
             .ok()?;
         if !status.success() || std::fs::rename(&tmp, &file).is_err() {
