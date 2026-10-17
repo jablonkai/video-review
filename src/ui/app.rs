@@ -387,6 +387,10 @@ impl eframe::App for App {
         if !dropped.is_empty() {
             self.r.open_paths(dropped);
         }
+        let opened = crate::open_with::take();
+        if !opened.is_empty() {
+            self.r.open_paths(opened);
+        }
         self.shortcuts(&ctx);
         self.r.hover_info.clear();
         let video = self.r.video_texture(frame);

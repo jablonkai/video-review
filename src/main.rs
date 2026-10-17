@@ -5,6 +5,7 @@ mod export;
 mod i18n;
 mod model;
 mod mpv;
+mod open_with;
 mod review;
 mod theme;
 mod thumbs;
@@ -23,7 +24,17 @@ fn main() -> eframe::Result {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native("Video Review", options, Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, paths).map_err(|e| e.to_string())?))))
+    open_with::install();
+    eframe::run_native(
+        "Video Review",
+        options,
+        Box::new(move |cc| {
+            // A Finder launch has no argv paths; its files arrived before this runs.
+            let paths = if paths.is_empty() { open_with::take() } else { paths };
+            open_with::set_repaint(&cc.egui_ctx);
+            Ok(Box::new(ui::app::App::new(cc, paths).map_err(|e| e.to_string())?))
+        }),
+    )
 }
 
 /// Paths are saved as the last session, so make them independent of the
