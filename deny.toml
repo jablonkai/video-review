@@ -1,0 +1,11 @@
+# cargo deny check advisories (CI gate). Only the advisories section is checked.
+
+[advisories]
+ignore = [
+    # zvariant, zvariant_derive and zbus_names were merged into zbus 6 and are no longer
+    # published standalone. They come in through eframe -> accesskit_unix (Linux AT-SPI),
+    # are not built for macOS, and go away once eframe/accesskit move to zbus 6.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained (merged into zbus 6); Linux-only, via eframe/accesskit" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained (merged into zbus 6); Linux-only, via eframe/accesskit" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained (merged into zbus 6); Linux-only, via eframe/accesskit" },
+]
