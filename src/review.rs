@@ -102,6 +102,7 @@ pub struct Review {
     store: Option<CommentStore>,
     pub fps: f64,
     pub duration: f64,
+    /// Displayed picture size: pixel aspect applied, rotation swapped.
     pub video_w: i64,
     pub video_h: i64,
     pub playing: bool,
@@ -220,15 +221,16 @@ impl Review {
                     self.fps_known = true;
                 }
                 Event::Double("estimated-vf-fps", f) if !self.fps_known && f > 1.0 && f < 1000.0 => self.fps = f,
-                Event::Int("width", w) if w > 0 => self.video_w = w,
-                Event::Int("height", h) if h > 0 => self.video_h = h,
+                Event::Int("video-params/dw" | "video-params/dh", v) if v > 0 => self.refresh_size(),
+                Event::Int("video-params/rotate", _) => self.refresh_size(),
                 Event::FileLoaded => {
                     // Demuxer values are known as soon as the file is open; decoder ones may lag.
                     if let (Some(w), Some(h)) =
                         (self.mpv.get_int("current-tracks/video/demux-w"), self.mpv.get_int("current-tracks/video/demux-h"))
                         && w > 0 && h > 0 {
-                            self.video_w = w;
-                            self.video_h = h;
+                            let par = self.mpv.get_double("current-tracks/video/demux-par").filter(|p| *p > 0.0).unwrap_or(1.0);
+                            let rotate = self.mpv.get_int("current-tracks/video/demux-rotation").unwrap_or(0);
+                            (self.video_w, self.video_h) = display_size(w, h, par, rotate);
                         }
                     if let Some(f) = self.mpv.get_double("container-fps").filter(|f| *f > 1.0 && *f < 1000.0) {
                         self.fps = f;
@@ -265,6 +267,16 @@ impl Review {
                 self.reload();
             }
         }
+    }
+
+    /// `video-params/dw`/`dh` have the pixel aspect applied but not the
+    /// rotation, which the renderer applies after them.
+    fn refresh_size(&mut self) {
+        if let (Some(w), Some(h)) = (self.mpv.get_int("video-params/dw"), self.mpv.get_int("video-params/dh"))
+            && w > 0 && h > 0 {
+                let rotate = self.mpv.get_int("video-params/rotate").unwrap_or(0);
+                (self.video_w, self.video_h) = display_size(w, h, 1.0, rotate);
+            }
     }
 
     fn reload(&mut self) {
@@ -772,6 +784,14 @@ impl Review {
     }
 }
 
+/// The displayed size of a `w`×`h` picture with pixel aspect `par` and a
+/// clockwise `rotate` in degrees. Like mpv, a wide pixel widens the picture
+/// and a tall one makes it taller.
+pub fn display_size(w: i64, h: i64, par: f64, rotate: i64) -> (i64, i64) {
+    let (w, h) = if par > 1.0 { ((w as f64 * par).round() as i64, h) } else { (w, (h as f64 / par).round() as i64) };
+    if rotate.rem_euclid(180) == 90 { (h, w) } else { (w, h) }
+}
+
 // ---- scene and span arithmetic (pure, so it can be tested without mpv) -----
 
 /// Scene boundaries: 0, every cut inside the video, the end.
@@ -822,6 +842,16 @@ mod tests {
     use super::*;
 
     const CUTS: [f64; 3] = [2.0, 5.0, 9.0];
+
+    #[test]
+    fn display_size_applies_pixel_aspect_and_rotation() {
+        assert_eq!(display_size(720, 576, 64.0 / 45.0, 0), (1024, 576), "16:9 PAL");
+        assert_eq!(display_size(720, 576, 16.0 / 15.0 * 0.75, 0), (720, 720), "tall pixels grow the height");
+        assert_eq!(display_size(1920, 1080, 1.0, 90), (1080, 1920));
+        assert_eq!(display_size(1920, 1080, 1.0, 270), (1080, 1920));
+        assert_eq!(display_size(1920, 1080, 1.0, 180), (1920, 1080));
+        assert_eq!(display_size(720, 576, 64.0 / 45.0, 90), (576, 1024));
+    }
 
     #[test]
     fn bounds_drop_cuts_outside_the_video() {
