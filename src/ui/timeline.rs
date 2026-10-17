@@ -282,6 +282,9 @@ impl NoteMarks {
             if r.hide_done && c.done {
                 continue; // "Hide done" applies here too
             }
+            if c.general {
+                continue; // no place on the ruler
+            }
             match c.t_out {
                 Some(t_out) => spans.push((x(c.t_in), x(t_out).max(x(c.t_in) + 3.0), i)),
                 None => points.push((x(c.t_in), i)),

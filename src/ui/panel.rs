@@ -242,11 +242,12 @@ fn mode_switch(ui: &mut Ui, r: &mut Review) {
         (SpanMode::Moment, tr("mode.moment"), tr("mode.moment_tip"), true),
         (SpanMode::Scene, tr("mode.scene"), tr("mode.scene_tip"), r.scene_count() > 0),
         (SpanMode::Range, tr("mode.range"), tr("mode.range_tip"), true),
+        (SpanMode::Video, tr("mode.video"), tr("mode.video_tip"), true),
     ];
     let (outer, _) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
     ui.painter().rect_filled(outer, 6.0, theme::SURROUND);
     let inner = outer.shrink(3.0);
-    let w = inner.width() / 3.0;
+    let w = inner.width() / items.len() as f32;
     let current = r.mode();
     for (i, (mode, label, tip, enabled)) in items.into_iter().enumerate() {
         let cell = Rect::from_min_size(pos2(inner.left() + i as f32 * w, inner.top()), vec2(w, inner.height()));
@@ -277,6 +278,12 @@ fn target(ui: &mut Ui, r: &mut Review) {
     let t = r.draft_target();
     let mut clear_time = false;
     let mut clear_area = false;
+    if r.mode() == SpanMode::Video {
+        if line(ui, icon::WHOLE_VIDEO, &tr("target.video"), theme::LEADER, true) {
+            r.whole_video = false;
+        }
+        return;
+    }
     if let Some(pi) = r.pending_in {
         clear_time |= line(ui, icon::FIRST_PAGE, &trf("target.in_point", &[("tc", &r.tc(pi))]), theme::LEADER, true);
     } else if let (Some(sc), Some(out)) = (t.scenes, t.t_out) {
@@ -325,8 +332,14 @@ fn line(ui: &mut Ui, glyph: char, text: &str, color: Color32, clearable: bool) -
 /// The note at `index`. Returns whether it is hovered, and what was clicked.
 fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (bool, Option<RowAction>) {
     let tex = {
-        let (t, done) = (r.comments[index].t_in, r.comments[index].done);
-        if done { r.thumbs.gray_at(t).cloned() } else { r.thumbs.at(t).cloned() }
+        let (t, done, general) = (r.comments[index].t_in, r.comments[index].done, r.comments[index].general);
+        if general {
+            None
+        } else if done {
+            r.thumbs.gray_at(t).cloned()
+        } else {
+            r.thumbs.at(t).cloned()
+        }
     };
     let r: &Review = r;
     let cm = &r.comments[index];
@@ -364,6 +377,7 @@ fn note_row(ui: &mut Ui, r: &mut Review, st: &mut PanelState, index: usize) -> (
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     let when = match cm.t_out {
+                        _ if cm.general => tr("note.whole_video"),
                         Some(out) => format!("{} – {}", r.tc(cm.t_in), r.tc(out)),
                         None => r.tc(cm.t_in),
                     };
@@ -515,6 +529,9 @@ fn note_frame(ui: &mut Ui, cm: &crate::model::Comment, tex: Option<egui::Texture
     let tint = if cm.done { Color32::from_white_alpha(140) } else { Color32::WHITE };
     if let Some(tex) = tex {
         p.add(egui::epaint::RectShape::filled(rect, 3.0, tint).with_texture(tex.id(), cover_uv(tex.size(), rect)));
+    } else if cm.general {
+        let c = if cm.done { theme::FAINT } else { theme::MUTED };
+        p.text(rect.center(), egui::Align2::CENTER_CENTER, icon::WHOLE_VIDEO, font(Face::Icons, 26.0), c);
     }
     if let Some(area) = cm.area {
         GreasePencil::new(&cm.id).draw(&p, rect, &area, 1.8, false);

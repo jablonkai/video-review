@@ -69,11 +69,13 @@ pub fn stage(ui: &mut Ui, r: &mut Review, video: Option<egui::TextureId>, drag: 
                 && (drag.moved || (p - s).length() >= 6.0)
             {
                 drag.moved = true;
+                r.whole_video = false;
                 r.area = Some(drag_area(norm(s), norm(p)));
             }
         } else {
             if !drag.moved {
                 let (x, y) = norm(s);
+                r.whole_video = false;
                 r.area = Some(Area::pin(x, y));
             }
             drag.start = None;

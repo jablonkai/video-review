@@ -145,6 +145,7 @@ fn system_cjk_font(lang: Lang) -> Option<FontData> {
 /// Material icon code points (same glyphs as the Flutter version).
 pub mod icon {
     pub const MOVIE: char = '\u{f1f5}';
+    pub const WHOLE_VIDEO: char = '\u{f23c}';
     pub const FOLDER: char = '\u{f090}';
     pub const KEYBOARD: char = '\u{f144}';
     pub const SHARE: char = '\u{e6b8}';

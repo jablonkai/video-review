@@ -9,7 +9,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use crate::i18n::{trf, trn};
+use crate::i18n::{tr, trf, trn};
 use crate::model::{Comment, frame_of};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,9 +88,10 @@ fn rational(frames: i64, (num, den): (i64, i64)) -> String {
     if frames == 0 { "0s".to_owned() } else { format!("{}/{}s", frames * num, den) }
 }
 
+/// In the app's order: whole-video notes first (as markers on the first frame), then by time.
 fn sorted(comments: &[Comment]) -> Vec<&Comment> {
     let mut v: Vec<&Comment> = comments.iter().collect();
-    v.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+    v.sort_by(|a, b| b.general.cmp(&a.general).then(a.t_in.total_cmp(&b.t_in)));
     v
 }
 
@@ -212,8 +213,8 @@ pub fn markdown(comments: &[Comment], meta: &Meta) -> String {
     let _ = writeln!(out, "{}\n", trn("md.summary", list.len() as u64, &[("done", &done)]));
     for c in list {
         let (a, _) = frames(c, meta.fps);
-        let mut tc = frame_tc(a, meta.fps);
-        if let Some(t) = c.t_out {
+        let mut tc = if c.general { tr("note.whole_video") } else { frame_tc(a, meta.fps) };
+        if let Some(t) = c.t_out.filter(|_| !c.general) {
             let _ = write!(tc, "–{}", frame_tc(frame_of(t.max(0.0), meta.fps), meta.fps));
         }
         let scenes = match c.scenes {
@@ -232,7 +233,7 @@ mod tests {
     use super::*;
 
     fn note(text: &str, t_in: f64, t_out: Option<f64>, done: bool) -> Comment {
-        Comment { id: "a".into(), text: text.into(), t_in, t_out, area: None, scenes: Some((2, 3)), done, created: None }
+        Comment { id: "a".into(), text: text.into(), t_in, t_out, area: None, scenes: Some((2, 3)), done, created: None, general: false }
     }
 
     fn meta(fps: f64) -> Meta<'static> {
@@ -331,6 +332,16 @@ mod tests {
         assert!(s.contains("2 notes, 1 done."), "{s}");
         assert!(s.contains("- [ ] **00:00:00:00** (scenes 2–3) — open\n"), "{s}");
         assert!(s.contains("- [x] **00:00:01:00–00:00:02:00** (scenes 2–3) — fix \\*this\\*  \n  and that\n"), "{s}");
+    }
+
+    #[test]
+    fn whole_video_notes_come_first() {
+        let general = Comment { scenes: None, general: true, ..note("too long overall", 0.0, None, false) };
+        let list = [note("open", 0.0, None, false), general];
+        let s = markdown(&list, &meta(25.0));
+        let (g, o) = (s.find("- [ ] **Whole video** — too long overall\n"), s.find("open"));
+        assert!(g.is_some() && g < o, "{s}");
+        assert!(edl(&list, &meta(25.0)).find("too long").unwrap() < edl(&list, &meta(25.0)).find("|M:open").unwrap());
     }
 
     /// Notes at fractional rates with the expected NDF timecodes (counted at

@@ -57,6 +57,9 @@ pub struct Comment {
     pub scenes: Option<(u32, u32)>,
     pub done: bool,
     pub created: Option<String>,
+    /// About the whole video, not a time in it: `t_in` is 0, no span, area or scenes.
+    #[serde(default)]
+    pub general: bool,
 }
 
 impl Comment {
@@ -88,6 +91,9 @@ struct CommentJson {
     id: String,
     #[serde(default)]
     created: Option<String>,
+    /// Only written when true; the other versions see a note on the first frame.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    general: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -179,9 +185,10 @@ pub enum Change {
     Remove(String),
 }
 
-/// The order notes are listed, navigated and saved in. Stable, so notes at the same time keep their order.
-fn sort_by_time(list: &mut [Comment]) {
-    list.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+/// The order notes are listed, numbered and saved in: whole-video notes first, then by time.
+/// Stable, so notes at the same time keep their order.
+pub fn sort_by_time(list: &mut [Comment]) {
+    list.sort_by(|a, b| b.general.cmp(&a.general).then(a.t_in.total_cmp(&b.t_in)));
 }
 
 impl Change {
@@ -302,7 +309,17 @@ impl CommentStore {
                     s.sort_unstable();
                     (s[0], s[s.len() - 1])
                 });
-                Comment { id: j.id, text: j.text, t_in: j.t_in, t_out: j.t_out, area: j.area, scenes, done: j.done, created: j.created }
+                Comment {
+                    id: j.id,
+                    text: j.text,
+                    t_in: j.t_in,
+                    t_out: j.t_out,
+                    area: j.area,
+                    scenes,
+                    done: j.done,
+                    created: j.created,
+                    general: j.general,
+                }
             })
             .collect();
         sort_by_time(&mut list);
@@ -374,6 +391,7 @@ impl CommentStore {
                     done: c.done,
                     id: c.id.clone(),
                     created: c.created.clone(),
+                    general: c.general,
                 })
                 .collect(),
         };
@@ -668,6 +686,7 @@ mod tests {
                 scenes: Some((3, 4)),
                 done: false,
                 created: None,
+                general: false,
             },
             Comment {
                 id: "a".into(),
@@ -678,7 +697,9 @@ mod tests {
                 scenes: None,
                 done: true,
                 created: Some("2026-10-16T01:00:00".into()),
+                general: false,
             },
+            Comment { general: true, ..note("g", 0.0) },
         ];
         store.save(&mut list, Fps::Known(24.0)).unwrap();
         let raw = std::fs::read_to_string(store.file()).unwrap();
@@ -686,15 +707,17 @@ mod tests {
         assert!(raw.contains("\"x\": 0.1235"));
         assert!(raw.contains("\"w\": 0.8765"), "area clamped to the frame: {raw}");
         assert!(raw.find("\"text\"").unwrap() < raw.find("\"t_in\"").unwrap());
+        assert_eq!(raw.matches("\"general\"").count(), 1, "only written for whole-video notes: {raw}");
         let back = store.load().unwrap();
-        assert_eq!(back[0].id, "a");
-        assert_eq!(back[1].scenes, Some((3, 4)));
+        assert!(back[0].general, "whole-video notes come first");
+        assert_eq!(back[1].id, "a");
+        assert_eq!(back[2].scenes, Some((3, 4)));
         assert!(!store.changed_externally());
         std::fs::remove_dir_all(dir).ok();
     }
 
     fn note(id: &str, t_in: f64) -> Comment {
-        Comment { id: id.into(), text: id.into(), t_in, t_out: None, area: None, scenes: None, done: false, created: None }
+        Comment { id: id.into(), text: id.into(), t_in, t_out: None, area: None, scenes: None, done: false, created: None, general: false }
     }
 
     fn temp_video() -> (PathBuf, PathBuf) {
