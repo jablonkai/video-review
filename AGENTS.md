@@ -11,12 +11,14 @@ brew install mpv ffmpeg                         # libmpv needed to link/run; ffm
 cargo run --release -- <folder-or-videos...>    # no args = reopen last session
 cargo test                                      # unit tests live in-file (#[cfg(test)])
 cargo test <name>                               # single test, e.g. cargo test exact_frame_durations
-cargo clippy --all-targets -- -D warnings       # CI gate (macOS, together with cargo test)
+cargo fmt --check                               # CI gate (rustfmt.toml; toolchain pinned in rust-toolchain.toml)
+cargo clippy --all-targets -- -D warnings       # CI gate (macOS, together with fmt + cargo test)
+cargo deny check advisories                     # CI gate (RustSec advisories; `cargo install cargo-deny`)
 ./tools/bundle-macos.sh                         # -> target/release/Video Review.app
 ./tools/make-dmg.sh                             # -> target/release/Video Review-0.1.0.dmg (drag-to-install .dmg)
 ```
 
-`build.rs` adds `/opt/homebrew/lib` or `/usr/local/lib` to the link path if `libmpv.dylib` is there; set `MPV_LIB_DIR` otherwise. Edition 2024. CI installs only mpv, so the ffmpeg scene-detection test silently no-ops there.
+`build.rs` adds `/opt/homebrew/lib` or `/usr/local/lib` to the link path if `libmpv.dylib` is there; set `MPV_LIB_DIR` otherwise. Edition 2024. CI installs mpv via Homebrew, which pulls in ffmpeg, so the ffmpeg scene-detection test runs there too (it silently no-ops only where ffmpeg is missing).
 
 ## Architecture
 

@@ -149,8 +149,8 @@ impl Mpv {
             }
             for (k, v) in [
                 ("vo", "libmpv"),
-                ("hr-seek", "yes"),    // exact seeks, not keyframe-snapped
-                ("keep-open", "yes"),  // stay on the last frame at the end
+                ("hr-seek", "yes"),   // exact seeks, not keyframe-snapped
+                ("keep-open", "yes"), // stay on the last frame at the end
                 ("pause", "yes"),
                 ("idle", "yes"),
                 ("osc", "no"),
@@ -186,10 +186,7 @@ impl Mpv {
             f(unsafe { CStr::from_ptr(name) }) as *mut c_void
         }
         let api = cstr("opengl");
-        let mut init = MpvOpenglInitParams {
-            get_proc_address: gpa,
-            get_proc_address_ctx: &get_proc_address as *const _ as *mut c_void,
-        };
+        let mut init = MpvOpenglInitParams { get_proc_address: gpa, get_proc_address_ctx: &get_proc_address as *const _ as *mut c_void };
         let mut params = [
             MpvRenderParam { kind: RENDER_API_TYPE, data: api.as_ptr() as *mut c_void },
             MpvRenderParam { kind: RENDER_OPENGL_INIT_PARAMS, data: &mut init as *mut _ as *mut c_void },

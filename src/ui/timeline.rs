@@ -28,18 +28,24 @@ pub fn filmstrip(ui: &mut Ui, r: &mut Review) {
     };
     let hover = resp.hover_pos().and_then(|p| scene_at_x(r, p.x));
     if let Some(n) = hover
-        && let Some((a, b)) = r.scene_range(n) {
+        && let Some((a, b)) = r.scene_range(n)
+    {
         r.hover_info = trf("scene.hover", &[("n", &n), ("a", &r.tc(a)), ("b", &r.tc(b)), ("secs", &secs(a, b))]);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     if resp.clicked()
-        && let Some(n) = resp.interact_pointer_pos().and_then(|p| scene_at_x(r, p.x)) {
-            r.pause();
-            if ui.input(|i| i.modifiers.shift) { r.extend_scenes(n) } else { r.select_scenes(n, n) }
-            if let Some(s) = r.sel {
-                r.seek(s.t_in);
-            }
+        && let Some(n) = resp.interact_pointer_pos().and_then(|p| scene_at_x(r, p.x))
+    {
+        r.pause();
+        if ui.input(|i| i.modifiers.shift) {
+            r.extend_scenes(n)
+        } else {
+            r.select_scenes(n, n)
         }
+        if let Some(s) = r.sel {
+            r.seek(s.t_in);
+        }
+    }
 
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 3.0, theme::FILM_BASE);
@@ -91,7 +97,8 @@ pub fn filmstrip(ui: &mut Ui, r: &mut Review) {
     }
 
     if let Some((a, z)) = r.sel.and_then(|s| s.scenes)
-        && let (Some((t_in, _)), Some((_, t_out))) = (r.scene_range(a), r.scene_range(z)) {
+        && let (Some((t_in, _)), Some((_, t_out))) = (r.scene_range(a), r.scene_range(z))
+    {
         let sr = Rect::from_min_max(pos2(x(t_in), rect.top() + 1.0), pos2(x(t_out), rect.bottom() - 1.0));
         p.rect_filled(sr, 0.0, theme::LEADER_WASH);
         p.rect_stroke(sr.shrink(1.0), 2.0, Stroke::new(2.0, theme::LEADER), StrokeKind::Middle);
@@ -235,12 +242,13 @@ pub fn ruler(ui: &mut Ui, r: &mut Review, drag: &mut RulerDrag) -> bool {
     }
 
     if let Some(s) = r.sel
-        && let Some(out) = s.t_out {
-            let sr = Rect::from_min_max(pos2(x(s.t_in), rect.top()), pos2(x(out), rect.bottom()));
-            p.rect_filled(sr, 0.0, theme::LEADER_WASH);
-            p.rect_filled(Rect::from_min_size(sr.left_top(), vec2(2.0, rect.height())), 0.0, theme::LEADER);
-            p.rect_filled(Rect::from_min_size(pos2(sr.right() - 2.0, sr.top()), vec2(2.0, rect.height())), 0.0, theme::LEADER);
-        }
+        && let Some(out) = s.t_out
+    {
+        let sr = Rect::from_min_max(pos2(x(s.t_in), rect.top()), pos2(x(out), rect.bottom()));
+        p.rect_filled(sr, 0.0, theme::LEADER_WASH);
+        p.rect_filled(Rect::from_min_size(sr.left_top(), vec2(2.0, rect.height())), 0.0, theme::LEADER);
+        p.rect_filled(Rect::from_min_size(pos2(sr.right() - 2.0, sr.top()), vec2(2.0, rect.height())), 0.0, theme::LEADER);
+    }
     if let Some(pi) = r.pending_in {
         p.rect_filled(Rect::from_min_size(pos2(x(pi), rect.top()), vec2(2.0, rect.height())), 0.0, theme::LEADER);
     }

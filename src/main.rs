@@ -23,11 +23,7 @@ fn main() -> eframe::Result {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native(
-        "Video Review",
-        options,
-        Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, paths).map_err(|e| e.to_string())?))),
-    )
+    eframe::run_native("Video Review", options, Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, paths).map_err(|e| e.to_string())?))))
 }
 
 /// Paths are saved as the last session, so make them independent of the

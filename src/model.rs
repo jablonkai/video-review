@@ -135,13 +135,8 @@ pub fn collect_videos(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for path in paths {
         if path.is_dir() {
-            let mut files: Vec<PathBuf> = std::fs::read_dir(path)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.is_file() && is_video(p))
-                .collect();
+            let mut files: Vec<PathBuf> =
+                std::fs::read_dir(path).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_file() && is_video(p)).collect();
             files.sort();
             out.extend(files);
         } else if path.is_file() && is_video(path) {
@@ -173,8 +168,14 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 pub enum Change {
     /// Adds the note, or replaces the one with the same id (also undoes a delete).
     Put(Comment),
-    Text { id: String, text: String },
-    Done { id: String, done: bool },
+    Text {
+        id: String,
+        text: String,
+    },
+    Done {
+        id: String,
+        done: bool,
+    },
     Remove(String),
 }
 
@@ -301,16 +302,7 @@ impl CommentStore {
                     s.sort_unstable();
                     (s[0], s[s.len() - 1])
                 });
-                Comment {
-                    id: j.id,
-                    text: j.text,
-                    t_in: j.t_in,
-                    t_out: j.t_out,
-                    area: j.area,
-                    scenes,
-                    done: j.done,
-                    created: j.created,
-                }
+                Comment { id: j.id, text: j.text, t_in: j.t_in, t_out: j.t_out, area: j.area, scenes, done: j.done, created: j.created }
             })
             .collect();
         sort_by_time(&mut list);
@@ -677,7 +669,16 @@ mod tests {
                 done: false,
                 created: None,
             },
-            Comment { id: "a".into(), text: "first".into(), t_in: 25.36, t_out: None, area: None, scenes: None, done: true, created: Some("2026-10-16T01:00:00".into()) },
+            Comment {
+                id: "a".into(),
+                text: "first".into(),
+                t_in: 25.36,
+                t_out: None,
+                area: None,
+                scenes: None,
+                done: true,
+                created: Some("2026-10-16T01:00:00".into()),
+            },
         ];
         store.save(&mut list, Fps::Known(24.0)).unwrap();
         let raw = std::fs::read_to_string(store.file()).unwrap();

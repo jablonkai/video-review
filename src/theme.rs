@@ -108,9 +108,17 @@ fn system_cjk_font(lang: Lang) -> Option<FontData> {
     let ja = lang == Lang::Ja;
     let candidates: &[(&str, u32)] = if cfg!(target_os = "macos") {
         if ja {
-            &[("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", 0), ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0), ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0)]
+            &[
+                ("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", 0),
+                ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+                ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+            ]
         } else {
-            &[("/System/Library/Fonts/Hiragino Sans GB.ttc", 0), ("/System/Library/Fonts/STHeiti Light.ttc", 0), ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0)]
+            &[
+                ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+                ("/System/Library/Fonts/STHeiti Light.ttc", 0),
+                ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+            ]
         }
     } else if cfg!(windows) {
         if ja {

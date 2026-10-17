@@ -108,11 +108,8 @@ impl Thumbnails {
         self.queue.jobs.lock().unwrap().clear();
         let meta = std::fs::metadata(path).ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let modified = meta
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let modified =
+            meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0);
         let key = Sha1::digest(format!("{}|{size}|{modified}", path.display()).as_bytes());
         let hex: String = key.iter().take(8).map(|b| format!("{b:02x}")).collect();
         let dir = cache_root().join(hex);
@@ -224,12 +221,7 @@ fn prune(root: &Path, limit: u64, active: &Mutex<Option<PathBuf>>) {
         .flatten()
         .filter_map(|e| {
             let meta = e.metadata().ok().filter(|m| m.is_dir())?;
-            let size = std::fs::read_dir(e.path())
-                .ok()?
-                .flatten()
-                .filter_map(|f| f.metadata().ok())
-                .map(|m| m.len())
-                .sum();
+            let size = std::fs::read_dir(e.path()).ok()?.flatten().filter_map(|f| f.metadata().ok()).map(|m| m.len()).sum();
             Some((e.path(), size, meta.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
         })
         .collect();

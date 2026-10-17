@@ -28,7 +28,11 @@ impl App {
         let mut r = Review::new(&cc.egui_ctx)?; // picks the language from prefs
         theme::install_fonts(&cc.egui_ctx, i18n::current());
         r.init_gl(cc)?;
-        if paths.is_empty() { r.restore_last_session() } else { r.open_paths(paths) }
+        if paths.is_empty() {
+            r.restore_last_session()
+        } else {
+            r.open_paths(paths)
+        }
         Ok(Self { r, panel: PanelState::default(), ruler: RulerDrag::default(), stage: StageDrag::default(), help: false })
     }
 
@@ -169,9 +173,11 @@ impl App {
                     for v in &r.videos {
                         let cur = r.current.as_ref() == Some(v);
                         let label = v.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                        let text = RichText::new(label)
-                            .font(font(if cur { Face::UiStrong } else { Face::Ui }, 13.0))
-                            .color(if cur { theme::PAPER } else { theme::MUTED });
+                        let text = RichText::new(label).font(font(if cur { Face::UiStrong } else { Face::Ui }, 13.0)).color(if cur {
+                            theme::PAPER
+                        } else {
+                            theme::MUTED
+                        });
                         if ui.add(egui::Button::new(text).frame(false)).clicked() {
                             pick = Some(v.clone());
                         }
@@ -282,11 +288,7 @@ impl App {
         let mut ui = ui.new_child(UiBuilder::new().max_rect(r).layout(Layout::top_down(Align::Min)));
         ui.label(RichText::new(tr("empty.title")).font(font(Face::NoteDisplay, 24.0)).color(theme::PAPER));
         ui.add_space(10.0);
-        ui.label(
-            RichText::new(tr("empty.body"))
-            .font(font(Face::Ui, 13.5))
-            .color(theme::MUTED),
-        );
+        ui.label(RichText::new(tr("empty.body")).font(font(Face::Ui, 13.5)).color(theme::MUTED));
         ui.add_space(22.0);
         let (mut files, mut folder) = (false, false);
         ui.horizontal(|ui| {
@@ -298,9 +300,11 @@ impl App {
             .min_size(vec2(0.0, 44.0));
             files = ui.add(b).clicked();
             ui.add_space(10.0);
-            let b = egui::Button::new(RichText::new(format!("{}  {}", icon::FOLDER, tr("open.folder"))).font(font(Face::Ui, 13.5)).color(theme::PAPER))
-                .frame(false)
-                .min_size(vec2(0.0, 44.0));
+            let b = egui::Button::new(
+                RichText::new(format!("{}  {}", icon::FOLDER, tr("open.folder"))).font(font(Face::Ui, 13.5)).color(theme::PAPER),
+            )
+            .frame(false)
+            .min_size(vec2(0.0, 44.0));
             folder = ui.add(b).clicked();
         });
         ui.add_space(6.0);
@@ -327,31 +331,31 @@ impl App {
             ("help.target", &["s", "io", "drag_ruler", "click_film", "redetect", "click_pic", "drag_pic", "esc"]),
             ("help.notes", &["m", "enter", "np", "undo", "mark"]),
         ];
-        let frame = Frame::NONE
-            .fill(theme::PANEL)
-            .stroke(Stroke::new(1.0, theme::HAIRLINE))
-            .corner_radius(8)
-            .inner_margin(Margin { left: 28, right: 28, top: 24, bottom: 24 });
-        let resp = egui::Modal::new(egui::Id::unique("help"))
-            .frame(frame)
-            .backdrop_color(Color32::from_black_alpha(140))
-            .show(ctx, |ui| {
-                ui.set_width(504.0);
-                ui.label(RichText::new(tr("help.title")).font(font(Face::UiStrong, 17.0)).color(theme::PAPER));
-                for (title, rows) in GROUPS {
-                    ui.add_space(14.0);
-                    ui.label(RichText::new(tr(title)).font(font(Face::UiStrong, 13.0)).color(theme::MUTED));
-                    ui.add_space(4.0);
-                    for row in *rows {
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            let k = ui.label(RichText::new(tr(&format!("help.{row}.k"))).font(font(Face::TcStrong, 13.0)).color(theme::PENCIL));
-                            ui.add_space((190.0 - k.rect.width()).max(8.0));
-                            ui.add(egui::Label::new(RichText::new(tr(&format!("help.{row}.d"))).font(font(Face::Ui, 13.5)).color(theme::PAPER)).wrap());
-                        });
-                    }
+        let frame = Frame::NONE.fill(theme::PANEL).stroke(Stroke::new(1.0, theme::HAIRLINE)).corner_radius(8).inner_margin(Margin {
+            left: 28,
+            right: 28,
+            top: 24,
+            bottom: 24,
+        });
+        let resp = egui::Modal::new(egui::Id::unique("help")).frame(frame).backdrop_color(Color32::from_black_alpha(140)).show(ctx, |ui| {
+            ui.set_width(504.0);
+            ui.label(RichText::new(tr("help.title")).font(font(Face::UiStrong, 17.0)).color(theme::PAPER));
+            for (title, rows) in GROUPS {
+                ui.add_space(14.0);
+                ui.label(RichText::new(tr(title)).font(font(Face::UiStrong, 13.0)).color(theme::MUTED));
+                ui.add_space(4.0);
+                for row in *rows {
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let k = ui.label(RichText::new(tr(&format!("help.{row}.k"))).font(font(Face::TcStrong, 13.0)).color(theme::PENCIL));
+                        ui.add_space((190.0 - k.rect.width()).max(8.0));
+                        ui.add(
+                            egui::Label::new(RichText::new(tr(&format!("help.{row}.d"))).font(font(Face::Ui, 13.5)).color(theme::PAPER)).wrap(),
+                        );
+                    });
                 }
-            });
+            }
+        });
         if resp.should_close() {
             self.help = false;
         }
@@ -378,7 +382,8 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.r.update();
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
+        let dropped: Vec<PathBuf> =
+            ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if !dropped.is_empty() {
             self.r.open_paths(dropped);
         }
@@ -398,17 +403,13 @@ impl eframe::App for App {
                 return;
             }
             let mut buttons = (false, false, false, false);
-            egui::Panel::top("header")
-                .exact_size(52.0)
-                .frame(Frame::NONE.fill(theme::PANEL))
-                .show_separator_line(false)
-                .show(ui, |ui| {
-                    let full = ui.max_rect();
-                    let mut left = ui.new_child(UiBuilder::new().max_rect(full).layout(Layout::left_to_right(Align::Center)));
-                    self.header(&mut left);
-                    let mut right = ui.new_child(UiBuilder::new().max_rect(full).layout(Layout::right_to_left(Align::Center)));
-                    buttons = self.header_buttons(&mut right);
-                });
+            egui::Panel::top("header").exact_size(52.0).frame(Frame::NONE.fill(theme::PANEL)).show_separator_line(false).show(ui, |ui| {
+                let full = ui.max_rect();
+                let mut left = ui.new_child(UiBuilder::new().max_rect(full).layout(Layout::left_to_right(Align::Center)));
+                self.header(&mut left);
+                let mut right = ui.new_child(UiBuilder::new().max_rect(full).layout(Layout::right_to_left(Align::Center)));
+                buttons = self.header_buttons(&mut right);
+            });
             let mut drafted = false;
             egui::Panel::bottom("transport")
                 .frame(Frame::NONE.fill(theme::PANEL).inner_margin(Margin { left: 20, right: 20, top: 14, bottom: 18 }))
@@ -511,9 +512,10 @@ fn volume(ui: &mut Ui, r: &mut Review, row: Rect) -> f32 {
     let track = Rect::from_min_max(pos2(slider.left() + 5.0, slider.center().y - 1.5), pos2(slider.right() - 5.0, slider.center().y + 1.5));
     let value_at = |x: f32| (((x - track.left()) / track.width()).clamp(0.0, 1.0) * 100.0) as f64;
     if resp.is_pointer_button_down_on()
-        && let Some(p) = resp.interact_pointer_pos() {
-            r.set_volume(value_at(p.x).round());
-        }
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        r.set_volume(value_at(p.x).round());
+    }
     if resp.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
         if scroll != 0.0 {
@@ -550,9 +552,11 @@ fn language_menu(ui: &mut Ui, r: &mut Review, named: bool) {
         ui.set_min_width(170.0);
         for lang in Lang::ALL {
             let on = lang == current;
-            let text = RichText::new(lang.native_name())
-                .font(font(if on { Face::UiStrong } else { Face::Ui }, 13.0))
-                .color(if on { theme::PAPER } else { theme::MUTED });
+            let text = RichText::new(lang.native_name()).font(font(if on { Face::UiStrong } else { Face::Ui }, 13.0)).color(if on {
+                theme::PAPER
+            } else {
+                theme::MUTED
+            });
             if ui.add(egui::Button::new(text).frame(false)).clicked() {
                 pick = Some(lang);
             }
@@ -562,4 +566,3 @@ fn language_menu(ui: &mut Ui, r: &mut Review, named: bool) {
         r.set_language(lang);
     }
 }
-
