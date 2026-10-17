@@ -195,7 +195,10 @@ impl Change {
 /// Reads and writes `<video>.comments.json` next to the video.
 pub struct CommentStore {
     video: PathBuf,
-    known_modified: Option<SystemTime>,
+    /// The file's bytes as last read or written (`None`: missing or unreadable).
+    /// Compared by content, not mtime: FAT/exFAT and some network shares have
+    /// 1-2 s timestamps, so another app's write could keep the same mtime.
+    known: Option<Vec<u8>>,
     /// The file exists but could not be read: never write over it until it parses again.
     read_only: bool,
     /// Copy the file to `.bak` before the next write, because it was broken once.
@@ -204,7 +207,7 @@ pub struct CommentStore {
 
 impl CommentStore {
     pub fn new(video: &Path) -> Self {
-        Self { video: video.to_owned(), known_modified: None, read_only: false, needs_backup: false }
+        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false }
     }
 
     pub fn file(&self) -> PathBuf {
@@ -219,19 +222,20 @@ impl CommentStore {
         self.read_only
     }
 
-    fn modified(&self) -> Option<SystemTime> {
-        std::fs::metadata(self.file()).and_then(|m| m.modified()).ok()
+    fn current(&self) -> Option<Vec<u8>> {
+        std::fs::read(self.file()).ok()
     }
 
     /// A missing file is an empty list; a file that can't be read or parsed is
     /// an error and makes the store read-only until a later load succeeds.
     pub fn load(&mut self) -> Result<Vec<Comment>, String> {
-        self.known_modified = self.modified();
-        let parsed = match std::fs::read_to_string(self.file()) {
-            Ok(raw) => serde_json::from_str::<FileJson>(&raw).map_err(|e| e.to_string()),
+        let read = std::fs::read(self.file());
+        let parsed = match &read {
+            Ok(raw) => serde_json::from_slice::<FileJson>(raw).map_err(|e| e.to_string()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(FileJson { video: String::new(), fps: 0.0, comments: Vec::new() }),
             Err(e) => Err(e.to_string()),
         };
+        self.known = read.ok();
         let data = match parsed {
             Ok(d) => d,
             Err(e) => {
@@ -310,15 +314,17 @@ impl CommentStore {
         }
         self.needs_backup = false;
         let tmp = sidecar(&file, ".tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(&payload)?)?;
+        let bytes = serde_json::to_string_pretty(&payload)?.into_bytes();
+        std::fs::write(&tmp, &bytes)?;
         std::fs::rename(&tmp, &file)?;
-        self.known_modified = self.modified();
+        // What we wrote, not a re-read: a write landing right after the rename still counts as outside.
+        self.known = Some(bytes);
         Ok(())
     }
 
     /// True when someone else (another app, Claude, the web version) changed the file.
     pub fn changed_externally(&self) -> bool {
-        self.modified() != self.known_modified
+        self.current() != self.known
     }
 }
 
@@ -634,6 +640,29 @@ mod tests {
         assert!(back[1].done);
         assert_eq!(back[2].id, "c");
         assert_eq!(list.len(), 3, "the in-memory list picks up the outside edit too");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn outside_edit_with_the_same_mtime_is_noticed() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0)];
+        store.save(&mut list, 24.0).unwrap();
+        let mtime = std::fs::metadata(store.file()).unwrap().modified().unwrap();
+
+        // Another app writes within the same timestamp tick (coarse FAT/SMB mtimes).
+        let mut theirs = vec![note("a", 1.0), note("c", 3.0)];
+        CommentStore::new(&video).save(&mut theirs, 24.0).unwrap();
+        std::fs::File::options().write(true).open(store.file()).unwrap().set_modified(mtime).unwrap();
+        assert!(store.changed_externally());
+
+        let ch = Change::Put(note("b", 2.0));
+        ch.apply(&mut list);
+        store.commit(&mut list, &[ch], 24.0).unwrap();
+        let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+        assert!(!store.changed_externally());
         std::fs::remove_dir_all(dir).ok();
     }
 
