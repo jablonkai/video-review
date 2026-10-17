@@ -40,10 +40,12 @@ drag-to-install disk image containing `Video Review.app`, an `Applications`
 alias, and a ReadMe (hu/en).
 
 The app is **not code-signed** (no Apple Developer ID), so on first launch the
-user must right-click the app and choose **Open**. It needs Homebrew's
-`mpv` and `ffmpeg` at runtime (`brew install mpv ffmpeg`); without them
-playback, thumbnails and scene detection are unavailable, which the app
-reports in its UI.
+user must right-click the app and choose **Open**. libmpv is not bundled: the
+`.app` is arm64-only (Apple Silicon) and links Homebrew's libmpv at
+`/opt/homebrew/opt/mpv/lib/libmpv.2.dylib`, so it needs `brew install mpv` in
+the default `/opt/homebrew` prefix. Without it (or on an Intel Mac) the app does
+not start at all. ffmpeg (`brew install ffmpeg`) is needed for thumbnails and
+scene detection; if it is missing, the app still runs and shows a warning.
 
 With no arguments it reopens the last folder/video (`~/Library/Application Support/video-review/prefs.json`).
 Press `?` in the app for the shortcuts.

@@ -5,8 +5,9 @@
 # Notes:
 #  * The app is NOT code-signed (no Apple Developer ID). On first launch the user
 #    must right-click the app and choose Open (Gatekeeper).
-#  * The app needs Homebrew's mpv and ffmpeg at runtime: brew install mpv ffmpeg
-#    (documented in the ReadMe inside the dmg and in README.md).
+#  * The app is arm64-only and links Homebrew's libmpv from /opt/homebrew by absolute
+#    path (not bundled), so it won't start without brew install mpv; ffmpeg is needed
+#    for thumbnails and scene detection (documented in the dmg ReadMe and README.md).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -42,12 +43,16 @@ Ebben az esetben a Finderben jobb gombbal kattints az alkalmazásra → "Megnyit
 The app is not code-signed, so macOS may block it. In Finder, right-click the app
 → Open, then open it again.
 
-Kötelező könyvtárak / Required libraries:
-A program a Homebrew-beli mpv és ffmpeg-hez nyúl / The app needs Homebrew's mpv
-and ffmpeg. Install them before running:
+Követelmények / Requirements:
+Apple Silicon (M1 vagy újabb) Mac és Homebrew az alapértelmezett /opt/homebrew
+helyen / An Apple Silicon (M1 or later) Mac and Homebrew in its default
+/opt/homebrew prefix. Telepítsd indítás előtt / Install before running:
     brew install mpv ffmpeg
-Nélkülük a lejátszás, a filmstrip-képek és a scenes felismerés nem működnek /
-Without them playback, thumbnails and scene detection are disabled.
+Az mpv nélkül (vagy Intel Macen) az alkalmazás el sem indul / Without mpv (or on
+an Intel Mac) the app does not start at all.
+Az ffmpeg nélkül a filmstrip-képek és a vágásfelismerés nem működnek, ezt az
+alkalmazás jelzi / Without ffmpeg, thumbnails and scene detection are disabled;
+the app shows a warning.
 
 Ismerd többet / Read more: README.md a forráskönyvtárban /
 Read more: README.md in the source repository.
