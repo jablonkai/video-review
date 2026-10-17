@@ -130,6 +130,7 @@
   "error.notes_unreadable": "The notes file is unreadable and will not be overwritten ({name}): {err}",
   "error.save": "Could not save: {err}",
   "error.notes_broken": "the notes file is broken and will not be overwritten",
+  "error.note_deleted_elsewhere": "The note was deleted elsewhere meanwhile, so this change was not saved.",
   "error.ffmpeg_missing": "ffmpeg not found",
 
   "md.summary": { "one": "{n} note, {done} done. Timecode: non-drop frame (NDF).", "other": "{n} notes, {done} done. Timecode: non-drop frame (NDF)." },

@@ -209,6 +209,18 @@ impl Change {
     }
 }
 
+/// Whether a text or done edit in `changes` (already applied to `list`) hit a
+/// note that is gone, i.e. was deleted elsewhere, so the edit was dropped. A
+/// later `Remove` of the same note in `changes` is a local delete, not a loss.
+pub fn edits_lost(changes: &[Change], list: &[Comment]) -> bool {
+    changes.iter().enumerate().any(|(i, ch)| match ch {
+        Change::Text { id, .. } | Change::Done { id, .. } => {
+            !list.iter().any(|c| &c.id == id) && !changes[i + 1..].iter().any(|l| matches!(l, Change::Remove(r) if r == id))
+        }
+        _ => false,
+    })
+}
+
 /// Reads and writes `<video>.comments.json` next to the video.
 pub struct CommentStore {
     video: PathBuf,
@@ -801,6 +813,32 @@ mod tests {
         Change::Put(removed.clone()).apply(&mut list);
         Change::Put(removed).apply(&mut list);
         assert_eq!(list.len(), 2, "putting back twice keeps one copy");
+    }
+
+    #[test]
+    fn edit_of_a_note_deleted_elsewhere_is_reported() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0), note("b", 2.0)];
+        store.save(&mut list, 24.0).unwrap();
+        // Another app deletes "a" while it is being edited here.
+        let mut other = CommentStore::new(&video);
+        let mut theirs = other.load().unwrap();
+        theirs.retain(|c| c.id != "a");
+        other.save(&mut theirs, 24.0).unwrap();
+        let edits = [Change::Text { id: "a".into(), text: "new".into() }, Change::Done { id: "b".into(), done: true }];
+        for ch in &edits {
+            ch.apply(&mut list);
+        }
+        assert!(!edits_lost(&edits, &list), "still there before the commit");
+        store.commit(&mut list, &edits, 24.0).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(edits_lost(&edits, &list));
+        assert!(!edits_lost(&edits[1..], &list), "the edit of a note that is still there is not lost");
+        // An edit followed by a local delete of the same note is not a loss.
+        let deleted = [Change::Text { id: "b".into(), text: "x".into() }, Change::Remove("b".into())];
+        assert!(!edits_lost(&deleted, &[]));
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

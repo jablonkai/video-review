@@ -130,6 +130,7 @@
   "error.notes_unreadable": "Die Notizdatei ist unlesbar und wird nicht überschrieben ({name}): {err}",
   "error.save": "Speichern fehlgeschlagen: {err}",
   "error.notes_broken": "die Notizdatei ist beschädigt und wird nicht überschrieben",
+  "error.note_deleted_elsewhere": "Die Notiz wurde inzwischen anderswo gelöscht, daher wurde diese Änderung nicht gespeichert.",
   "error.ffmpeg_missing": "ffmpeg nicht gefunden",
 
   "md.summary": { "one": "{n} Notiz, {done} erledigt. Timecode: Non-Drop-Frame (NDF).", "other": "{n} Notizen, {done} erledigt. Timecode: Non-Drop-Frame (NDF)." },

@@ -130,6 +130,7 @@
   "error.notes_unreadable": "A jegyzetfájl olvashatatlan, és nem lesz felülírva ({name}): {err}",
   "error.save": "A mentés nem sikerült: {err}",
   "error.notes_broken": "a jegyzetfájl sérült, és nem lesz felülírva",
+  "error.note_deleted_elsewhere": "A jegyzetet közben máshol törölték, ezért ez a módosítás nem lett mentve.",
   "error.ffmpeg_missing": "az ffmpeg nem található",
 
   "md.summary": { "one": "{n} jegyzet, {done} kész. Időkód: non-drop frame (NDF).", "other": "{n} jegyzet, {done} kész. Időkód: non-drop frame (NDF)." },
