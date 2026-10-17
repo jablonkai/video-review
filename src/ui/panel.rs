@@ -166,6 +166,14 @@ fn consume_plain_enter(i: &mut egui::InputState) -> bool {
     !i.modifiers.shift && !i.modifiers.alt && i.consume_key(egui::Modifiers::NONE, Key::Enter)
 }
 
+/// Keeps focus on Escape so the field can handle it itself. By default egui
+/// drops the focus before any widget runs, so the global Escape shortcut would
+/// clear the selection and the field would never see the key.
+fn keep_escape(edit: egui::TextEdit<'_>) -> egui::TextEdit<'_> {
+    let filter = egui::EventFilter { escape: true, ..edit.get_event_filter() };
+    edit.event_filter(filter)
+}
+
 fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
     ui.label(RichText::new(tr("panel.new_note")).font(font(Face::UiStrong, 14.0)).color(theme::PAPER));
     ui.add_space(6.0);
@@ -181,6 +189,9 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
         if ui.input_mut(consume_plain_enter) && !st.draft.trim().is_empty() {
             r.add_comment(&st.draft);
             st.draft.clear();
+            ui.memory_mut(|m| m.surrender_focus(id));
+        } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+            // Only leave the field; the draft and its target stay.
             ui.memory_mut(|m| m.surrender_focus(id));
         }
     }
@@ -199,6 +210,7 @@ fn composer(ui: &mut Ui, r: &mut Review, st: &mut PanelState) {
                 .desired_rows(3)
                 .desired_width(f32::INFINITY)
                 .lock_focus(true);
+            let edit = keep_escape(edit);
             let resp = ui.add(edit);
             if st.focus_draft {
                 resp.request_focus();
@@ -466,14 +478,14 @@ fn editor(ui: &mut Ui, st: &mut PanelState, id: &str) -> Option<String> {
         .corner_radius(4)
         .inner_margin(Margin::same(8))
         .show(ui, |ui| {
-            ui.add(
+            ui.add(keep_escape(
                 egui::TextEdit::multiline(text)
                     .id(edit_id)
                     .font(font(Face::Note, 14.5))
                     .frame(Frame::NONE)
                     .desired_rows(1)
                     .desired_width(f32::INFINITY),
-            )
+            ))
         })
         .inner;
     if st.edit_needs_focus {
@@ -481,6 +493,10 @@ fn editor(ui: &mut Ui, st: &mut PanelState, id: &str) -> Option<String> {
         st.edit_needs_focus = false;
     } else if finish.is_none() && resp.lost_focus() {
         finish = Some(true); // clicking elsewhere keeps the edit
+    }
+    if finish.is_some() {
+        // The field is gone next frame; don't leave the shortcuts muted meanwhile.
+        ui.memory_mut(|m| m.surrender_focus(edit_id));
     }
     let save = finish?;
     let (_, text) = st.editing.take()?;
@@ -522,6 +538,56 @@ mod tests {
         let mut out = ctx.run_ui(raw, |ui| consumed = ui.input_mut(consume_plain_enter));
         out.textures_delta.clear();
         consumed
+    }
+
+    /// Whether a focused field still has focus, and still sees the key, on the
+    /// pass an Escape press arrives.
+    fn escape_reaches_field(keep: bool) -> (bool, bool) {
+        let ctx = egui::Context::default();
+        let id = egui::Id::unique("field");
+        let mut text = String::new();
+        let mut seen = (false, false);
+        for pass in 0..3 {
+            let events = if pass == 2 {
+                vec![egui::Event::Key {
+                    key: Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }]
+            } else {
+                vec![]
+            };
+            let raw = egui::RawInput { events, ..Default::default() };
+            let mut out = ctx.run_ui(raw, |ui| {
+                if pass == 2 {
+                    seen.0 = ui.ctx().text_edit_focused();
+                }
+                let edit = egui::TextEdit::multiline(&mut text).id(id);
+                let resp = ui.add(if keep { keep_escape(edit) } else { edit });
+                if pass == 0 {
+                    resp.request_focus();
+                }
+                if pass == 2 {
+                    seen.1 = ui.memory(|m| m.has_focus(id))
+                        && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
+                }
+            });
+            out.textures_delta.clear();
+        }
+        seen
+    }
+
+    #[test]
+    fn escape_stays_with_the_field() {
+        // Default egui drops the focus first, so the global shortcut would run.
+        assert_eq!(escape_reaches_field(false), (false, false));
+        assert_eq!(escape_reaches_field(true), (true, true));
+        // Arrow keys must keep moving the cursor.
+        let mut s = String::new();
+        let f = keep_escape(egui::TextEdit::multiline(&mut s)).get_event_filter();
+        assert!(f.escape && f.horizontal_arrows && f.vertical_arrows && !f.tab);
     }
 
     #[test]
