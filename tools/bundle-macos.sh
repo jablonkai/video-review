@@ -3,6 +3,7 @@
 set -e
 cd "$(dirname "$0")/.."
 cargo build --release --quiet
+VERSION=$(cargo pkgid | sed 's/.*[#@]//')
 APP="target/release/Video Review.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
@@ -16,7 +17,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>hu.jablonkai.video-review</string>
   <key>CFBundleExecutable</key><string>video-review</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

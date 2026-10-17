@@ -15,7 +15,7 @@ cargo fmt --check                               # CI gate (rustfmt.toml; toolcha
 cargo clippy --all-targets -- -D warnings       # CI gate (macOS, together with fmt + cargo test)
 cargo deny check advisories                     # CI gate (RustSec advisories; `cargo install cargo-deny`)
 ./tools/bundle-macos.sh                         # -> target/release/Video Review.app
-./tools/make-dmg.sh                             # -> target/release/Video Review-0.1.0.dmg (drag-to-install .dmg)
+./tools/make-dmg.sh                             # -> target/release/Video Review-<version>.dmg (drag-to-install .dmg)
 ```
 
 `build.rs` adds `/opt/homebrew/lib` or `/usr/local/lib` to the link path if `libmpv.dylib` is there; set `MPV_LIB_DIR` otherwise. Edition 2024. CI installs mpv via Homebrew, which pulls in ffmpeg, so the ffmpeg scene-detection test runs there too (it silently no-ops only where ffmpeg is missing).

@@ -12,7 +12,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 APP_NAME="Video Review"
-VERSION="0.1.0"
+VERSION=$(cargo pkgid | sed 's/.*[#@]//')
 APP="$APP_NAME.app"
 DMG="target/release/${APP_NAME}-${VERSION}.dmg"
 TMP_DMG="target/release/${APP_NAME}-${VERSION}-unsigned.dmg"
@@ -28,12 +28,12 @@ mkdir -p "$STAGING"
 cp -R "target/release/$APP" "$STAGING/$APP"
 ln -s /Applications "$STAGING/Applications"
 
-cat > "$STAGING/ReadMe - Video Review.txt" <<'README'
-Video Review — Mac installer / macOS telepítő (0.1.0)
+cat > "$STAGING/ReadMe - Video Review.txt" <<README
+Video Review — Mac installer / macOS telepítő ($VERSION)
 =====================================================
 
 Telepítés / Install:
-1. Duple kattints a Video Review-0.1.0.dmg fájlra / Double-click the .dmg.
+1. Duple kattints a Video Review-$VERSION.dmg fájlra / Double-click the .dmg.
 2. Húsd a "Video Review.app" ikont az Applications aliasra /
    Drag "Video Review.app" onto the Applications alias.
 
