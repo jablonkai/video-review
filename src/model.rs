@@ -368,7 +368,7 @@ pub mod scenes {
     }
 
     /// Size and modification time of the video, the key the cache is valid for.
-    fn stamp(video: &Path) -> Option<(u64, f64)> {
+    pub(super) fn stamp(video: &Path) -> Option<(u64, f64)> {
         let m = std::fs::metadata(video).ok()?;
         let t = m.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs_f64();
         Some((m.len(), t))
@@ -387,9 +387,11 @@ pub mod scenes {
         let _ = std::fs::remove_file(file(video));
     }
 
-    pub(super) fn store(video: &Path, cuts: &[f64]) {
-        let (size, mtime) = stamp(video).unzip();
-        let cache = Cache { threshold: THRESHOLD, cuts: cuts.to_vec(), size, mtime };
+    /// Caches `cuts` found in the version of the file that had the `analyzed` stamp, unless
+    /// the video has changed since (re-exported or still being written during detection).
+    pub(super) fn store(video: &Path, cuts: &[f64], analyzed: Option<(u64, f64)>) {
+        let Some((size, mtime)) = analyzed.filter(|&a| stamp(video) == Some(a)) else { return };
+        let cache = Cache { threshold: THRESHOLD, cuts: cuts.to_vec(), size: Some(size), mtime: Some(mtime) };
         let _ = std::fs::write(file(video), serde_json::to_string_pretty(&cache).unwrap_or_default());
     }
 
@@ -482,6 +484,8 @@ pub mod scenes {
     }
 
     fn run(video: &Path, slot: &Slot, done_us: &Arc<AtomicU64>) -> Result<Vec<f64>, String> {
+        // Taken before ffmpeg opens the file, so the cache names the version it read.
+        let analyzed = stamp(video);
         let (stdout, stderr) = {
             let mut s = slot.lock().unwrap_or_else(|e| e.into_inner());
             if s.0 {
@@ -519,7 +523,7 @@ pub mod scenes {
             _ => {}
         }
         let cuts = parse(&text);
-        store(video, &cuts);
+        store(video, &cuts, analyzed);
         Ok(cuts)
     }
 }
@@ -692,7 +696,7 @@ mod tests {
         std::fs::write(&cache, format!(r#"{{"threshold": {}, "cuts": [1.0]}}"#, scenes::THRESHOLD)).unwrap();
         assert_eq!(scenes::cached(&video), None);
 
-        scenes::store(&video, &[1.0, 2.5]);
+        scenes::store(&video, &[1.0, 2.5], scenes::stamp(&video));
         assert_eq!(scenes::cached(&video), Some(vec![1.0, 2.5]));
 
         // Another threshold makes it a miss.
@@ -703,17 +707,25 @@ mod tests {
         assert_eq!(scenes::cached(&video), None);
 
         // A new export over the same name (other size) makes it a miss.
-        scenes::store(&video, &[1.0, 2.5]);
+        scenes::store(&video, &[1.0, 2.5], scenes::stamp(&video));
         std::fs::write(&video, b"the re-exported, longer cut").unwrap();
         assert_eq!(scenes::cached(&video), None);
 
         // Same size, new mtime too.
-        scenes::store(&video, &[1.0, 2.5]);
+        scenes::store(&video, &[1.0, 2.5], scenes::stamp(&video));
         let f = std::fs::File::options().write(true).open(&video).unwrap();
         f.set_modified(SystemTime::now() + std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(scenes::cached(&video), None);
 
-        scenes::store(&video, &[3.0]);
+        // The file changed while ffmpeg read it: the cuts belong to the old version.
+        scenes::forget(&video);
+        let before = scenes::stamp(&video);
+        std::fs::write(&video, b"still being rendered").unwrap();
+        scenes::store(&video, &[4.0], before);
+        assert_eq!(scenes::cached(&video), None);
+        assert!(!cache.exists());
+
+        scenes::store(&video, &[3.0], scenes::stamp(&video));
         scenes::forget(&video);
         assert_eq!(scenes::cached(&video), None);
         assert!(!cache.exists());
