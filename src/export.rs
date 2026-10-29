@@ -233,7 +233,18 @@ mod tests {
     use super::*;
 
     fn note(text: &str, t_in: f64, t_out: Option<f64>, done: bool) -> Comment {
-        Comment { id: "a".into(), text: text.into(), t_in, t_out, area: None, scenes: Some((2, 3)), done, created: None, general: false }
+        Comment {
+            id: "a".into(),
+            text: text.into(),
+            t_in,
+            t_out,
+            area: None,
+            scenes: Some((2, 3)),
+            done,
+            created: None,
+            general: false,
+            extra: Default::default(),
+        }
     }
 
     fn meta(fps: f64) -> Meta<'static> {

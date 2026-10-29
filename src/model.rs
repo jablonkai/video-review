@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::{tr, trf};
 
+/// JSON object holding keys this app doesn't model, so a save doesn't drop them.
+pub type JsonMap = serde_json::Map<String, serde_json::Value>;
+
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "m4v", "mov", "webm", "mkv", "mxf", "avi"];
 
 /// Region on the frame, normalized to 0..1. w == h == 0 is a pin.
@@ -60,6 +63,9 @@ pub struct Comment {
     /// About the whole video, not a time in it: `t_in` is 0, no span, area or scenes.
     #[serde(default)]
     pub general: bool,
+    /// Keys this version doesn't know (written by the other versions), kept as is on save.
+    #[serde(default, skip_serializing_if = "JsonMap::is_empty")]
+    pub extra: JsonMap,
 }
 
 impl Comment {
@@ -94,6 +100,8 @@ struct CommentJson {
     /// Only written when true; the other versions see a note on the first frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     general: bool,
+    #[serde(flatten)]
+    extra: JsonMap,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -104,6 +112,8 @@ struct FileJson {
     fps: f64,
     #[serde(default)]
     comments: Vec<CommentJson>,
+    #[serde(flatten)]
+    extra: JsonMap,
 }
 
 // ---- time ------------------------------------------------------------------
@@ -197,7 +207,9 @@ impl Change {
         match self {
             Change::Put(c) => {
                 match list.iter_mut().find(|x| x.id == c.id) {
-                    Some(x) => *x = c.clone(),
+                    // The unknown keys of the note in the list (fresh from disk on a
+                    // re-read) win: this app never edits them, so ours may be stale.
+                    Some(x) => *x = Comment { extra: std::mem::take(&mut x.extra), ..c.clone() },
                     None => list.push(c.clone()),
                 }
                 sort_by_time(list);
@@ -242,6 +254,8 @@ pub struct CommentStore {
     needs_backup: bool,
     /// The `fps` in the file as last read or written; kept while ours is only an estimate.
     file_fps: Option<f64>,
+    /// Top-level keys of the file this app doesn't model, written back unchanged.
+    extra: JsonMap,
 }
 
 /// The frame rate a save writes, with how sure the player is about it.
@@ -255,7 +269,7 @@ pub enum Fps {
 
 impl CommentStore {
     pub fn new(video: &Path) -> Self {
-        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false, file_fps: None }
+        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false, file_fps: None, extra: JsonMap::new() }
     }
 
     pub fn file(&self) -> PathBuf {
@@ -286,7 +300,9 @@ impl CommentStore {
         let read = std::fs::read(self.file());
         let parsed = match &read {
             Ok(raw) => serde_json::from_slice::<FileJson>(raw).map_err(|e| e.to_string()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(FileJson { video: String::new(), fps: 0.0, comments: Vec::new() }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(FileJson { video: String::new(), fps: 0.0, comments: Vec::new(), extra: JsonMap::new() })
+            }
             Err(e) => Err(e.to_string()),
         };
         self.known = read.ok();
@@ -301,6 +317,7 @@ impl CommentStore {
         };
         self.read_only = false;
         self.file_fps = Some(data.fps).filter(|f| *f > 1.0 && *f < 1000.0);
+        self.extra = data.extra;
         let mut list: Vec<Comment> = data
             .comments
             .into_iter()
@@ -319,6 +336,7 @@ impl CommentStore {
                     done: j.done,
                     created: j.created,
                     general: j.general,
+                    extra: j.extra,
                 }
             })
             .collect();
@@ -392,8 +410,10 @@ impl CommentStore {
                     id: c.id.clone(),
                     created: c.created.clone(),
                     general: c.general,
+                    extra: c.extra.clone(),
                 })
                 .collect(),
+            extra: self.extra.clone(),
         };
         let file = self.file();
         if self.needs_backup && file.exists() {
@@ -687,6 +707,7 @@ mod tests {
                 done: false,
                 created: None,
                 general: false,
+                extra: JsonMap::new(),
             },
             Comment {
                 id: "a".into(),
@@ -698,6 +719,7 @@ mod tests {
                 done: true,
                 created: Some("2026-10-16T01:00:00".into()),
                 general: false,
+                extra: JsonMap::new(),
             },
             Comment { general: true, ..note("g", 0.0) },
         ];
@@ -716,8 +738,54 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
     }
 
+    #[test]
+    fn unknown_keys_survive_save() {
+        let dir = std::env::temp_dir().join(format!("vr-test-{}", Comment::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut store = CommentStore::new(&dir.join("a.mp4"));
+        let file = store.file();
+        let write = |author: &str| {
+            let json = serde_json::json!({
+                "video": "a.mp4", "fps": 25.0, "version": 2,
+                "comments": [
+                    {"id": "a", "text": "one", "t_in": 1.0, "done": false, "author": author, "replies": [{"text": "ok"}]},
+                    {"id": "b", "text": "two", "t_in": 2.0, "done": false},
+                ],
+            });
+            std::fs::write(&file, serde_json::to_vec(&json).unwrap()).unwrap();
+        };
+        write("X");
+        let mut list = store.load().unwrap();
+        // Another version changes an unknown key of the note we are editing.
+        write("Y");
+        let edits = [Change::Put(Comment { done: true, ..list[0].clone() }), Change::Remove("b".into())];
+        for ch in &edits {
+            ch.apply(&mut list);
+        }
+        store.commit(&mut list, &edits, Fps::Known(25.0)).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        assert_eq!(saved["version"], 2);
+        let notes = saved["comments"].as_array().unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0]["done"], true);
+        assert_eq!(notes[0]["author"], "Y");
+        assert_eq!(notes[0]["replies"][0]["text"], "ok");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
     fn note(id: &str, t_in: f64) -> Comment {
-        Comment { id: id.into(), text: id.into(), t_in, t_out: None, area: None, scenes: None, done: false, created: None, general: false }
+        Comment {
+            id: id.into(),
+            text: id.into(),
+            t_in,
+            t_out: None,
+            area: None,
+            scenes: None,
+            done: false,
+            created: None,
+            general: false,
+            extra: JsonMap::new(),
+        }
     }
 
     fn temp_video() -> (PathBuf, PathBuf) {
