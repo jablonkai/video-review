@@ -5,6 +5,7 @@
   "export.unknown_format": "不明な書き出し形式です – 次のいずれかの拡張子を使ってください: {exts}",
   "export.failed": "書き出しに失敗しました（{path}）: {err}",
   "export.edl_capped": { "other": "EDL に入るマーカーは最大 {max} 件です。ノート {n} 件のうち最初の {max} 件だけを書き出しました。すべて書き出すには FCPXML か Markdown を使ってください。" },
+  "export.odd_rate": "書き出しましたが、{fps} fps はどの標準フレームレートからも離れています。Final Cut Pro がファイルを拒否するか、マーカーの位置がずれる可能性があります。",
 
   "header.pick_video": "このフォルダの別の動画",
   "header.fps": "{fps} fps",
