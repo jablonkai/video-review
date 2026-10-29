@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Once, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -189,7 +190,7 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
         // The folder may have been removed (e.g. cache cleared) since the video was opened.
         let _ = std::fs::create_dir_all(&job.dir);
         // Write beside it and rename, so an interrupted grab never leaves a truncated jpg.
-        let tmp = job.dir.join(format!("{}.jpg.tmp", job.ms));
+        let tmp = tmp_path(&job.dir, job.ms);
         let status = Command::new(ffmpeg)
             .args(["-v", "error", "-ss", &format!("{:.3}", job.ms as f64 / 1000.0), "-i"])
             .arg(&job.video)
@@ -211,6 +212,15 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
     let img = img.to_rgba8();
     let size = [img.width() as usize, img.height() as usize];
     Some(ColorImage::from_rgba_unmultiplied(size, img.as_raw()))
+}
+
+/// A temp file name unique to this grab. Jobs for the same frame can overlap (switching A -> B -> A
+/// leaves the first one running), and a shared name would let one ffmpeg keep writing into the
+/// file the other has already renamed into place.
+fn tmp_path(dir: &Path, ms: i64) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    dir.join(format!("{ms}.{}-{n}.jpg.tmp", std::process::id()))
 }
 
 /// Deletes least recently used video directories under `root` until the rest fit in `limit` bytes.
@@ -255,6 +265,14 @@ mod tests {
 
     fn entry(name: &str, size: u64, secs: u64) -> (PathBuf, u64, SystemTime) {
         (PathBuf::from(name), size, SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
+    }
+
+    #[test]
+    fn tmp_paths_are_unique_per_job() {
+        let dir = Path::new("/cache");
+        let (a, b) = (tmp_path(dir, 1500), tmp_path(dir, 1500));
+        assert_ne!(a, b);
+        assert!(a.starts_with(dir) && a.to_string_lossy().ends_with(".jpg.tmp"));
     }
 
     #[test]
