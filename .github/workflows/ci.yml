@@ -4,17 +4,22 @@ on:
   push:
   pull_request:
 
+# Read-only token: no step needs to write to the repository.
+permissions:
+  contents: read
+
+# Actions are pinned to commit SHAs (a moved tag can't change what runs); Dependabot keeps them current.
 jobs:
   check:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install libmpv
         run: brew install mpv
       # rustup installs the toolchain and components pinned in rust-toolchain.toml.
       - name: Install Rust toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Rustfmt
         run: cargo fmt --check
       - name: Clippy
@@ -26,7 +31,7 @@ jobs:
     # cargo-deny-action is a container action, so it needs a Linux runner; it only reads Cargo.lock.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check advisories
