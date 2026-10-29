@@ -481,7 +481,10 @@ impl Review {
             }
         };
         // Left over from an earlier session; the poll writes them once the fps is known.
-        self.pending = store.load_pending();
+        self.pending = store.load_pending().unwrap_or_else(|e| {
+            self.error = Some(e);
+            Vec::new()
+        });
         for ch in &self.pending {
             ch.apply(&mut self.comments);
         }

@@ -132,6 +132,7 @@
   "error.open_video": "Nie można otworzyć wideo ({name}): {why}",
   "error.no_video": "Nie znaleziono wideo w podanej lokalizacji.",
   "error.notes_unreadable": "Plik notatek jest nieczytelny i nie zostanie nadpisany ({name}): {err}",
+  "error.pending_unreadable": "Niezapisane zmiany z poprzedniej sesji są nieczytelne i zostały zachowane jako {name}: {err}",
   "error.save": "Nie można zapisać: {err}",
   "error.notes_broken": "plik notatek jest uszkodzony i nie zostanie nadpisany",
   "error.note_deleted_elsewhere": "Notatka została w międzyczasie usunięta gdzie indziej, więc ta zmiana nie została zapisana.",

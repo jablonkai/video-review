@@ -132,6 +132,7 @@
   "error.open_video": "无法打开视频（{name}）：{why}",
   "error.no_video": "在指定位置未找到视频。",
   "error.notes_unreadable": "批注文件无法读取，不会被覆盖（{name}）：{err}",
+  "error.pending_unreadable": "上次会话中未保存的更改无法读取，已保留为 {name}：{err}",
   "error.save": "无法保存：{err}",
   "error.notes_broken": "批注文件已损坏，不会被覆盖",
   "error.note_deleted_elsewhere": "该批注已在别处被删除，因此此更改未保存。",

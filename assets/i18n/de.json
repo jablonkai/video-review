@@ -132,6 +132,7 @@
   "error.open_video": "Das Video konnte nicht geöffnet werden ({name}): {why}",
   "error.no_video": "Am angegebenen Ort wurde kein Video gefunden.",
   "error.notes_unreadable": "Die Notizdatei ist unlesbar und wird nicht überschrieben ({name}): {err}",
+  "error.pending_unreadable": "Ungespeicherte Änderungen einer früheren Sitzung sind unlesbar und wurden als {name} aufbewahrt: {err}",
   "error.save": "Speichern fehlgeschlagen: {err}",
   "error.notes_broken": "die Notizdatei ist beschädigt und wird nicht überschrieben",
   "error.note_deleted_elsewhere": "Die Notiz wurde inzwischen anderswo gelöscht, daher wurde diese Änderung nicht gespeichert.",

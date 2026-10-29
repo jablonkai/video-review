@@ -132,6 +132,7 @@
   "error.open_video": "No se pudo abrir el vídeo ({name}): {why}",
   "error.no_video": "No se encontró ningún vídeo en la ubicación indicada.",
   "error.notes_unreadable": "El archivo de notas es ilegible y no se sobrescribirá ({name}): {err}",
+  "error.pending_unreadable": "Los cambios sin guardar de una sesión anterior no se pudieron leer y se conservaron como {name}: {err}",
   "error.save": "No se pudo guardar: {err}",
   "error.notes_broken": "el archivo de notas está dañado y no se sobrescribirá",
   "error.note_deleted_elsewhere": "La nota se borró en otro lugar mientras tanto, así que este cambio no se guardó.",

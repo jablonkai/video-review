@@ -132,6 +132,7 @@
   "error.open_video": "Impossible d'ouvrir la vidéo ({name}) : {why}",
   "error.no_video": "Aucune vidéo trouvée à l'emplacement indiqué.",
   "error.notes_unreadable": "Le fichier de notes est illisible et ne sera pas écrasé ({name}) : {err}",
+  "error.pending_unreadable": "Les modifications non enregistrées d’une session précédente sont illisibles et ont été conservées dans {name} : {err}",
   "error.save": "Enregistrement impossible : {err}",
   "error.notes_broken": "le fichier de notes est corrompu et ne sera pas écrasé",
   "error.note_deleted_elsewhere": "La note a été supprimée ailleurs entre-temps, cette modification n'a donc pas été enregistrée.",

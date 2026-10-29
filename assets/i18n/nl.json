@@ -132,6 +132,7 @@
   "error.open_video": "De video kon niet worden geopend ({name}): {why}",
   "error.no_video": "Geen video gevonden op de opgegeven locatie.",
   "error.notes_unreadable": "Het notitiebestand is onleesbaar en wordt niet overschreven ({name}): {err}",
+  "error.pending_unreadable": "Niet-opgeslagen wijzigingen uit een eerdere sessie zijn onleesbaar en bewaard als {name}: {err}",
   "error.save": "Opslaan mislukt: {err}",
   "error.notes_broken": "het notitiebestand is beschadigd en wordt niet overschreven",
   "error.note_deleted_elsewhere": "De notitie is intussen elders verwijderd, dus deze wijziging is niet opgeslagen.",
