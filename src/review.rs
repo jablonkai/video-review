@@ -339,9 +339,14 @@ impl Review {
             // An unreadable file is tried again on every poll until it parses, and
             // pending changes until they are written. A file that just went missing
             // keeps the notes (and holds back writes) until the next poll.
-            let gone = self.store.as_mut().is_some_and(|s| s.gone_briefly());
-            if !gone && (self.store.as_ref().is_some_and(|s| s.read_only() || s.changed_externally()) || !self.pending.is_empty()) {
-                self.reload();
+            // The poll's read is handed to the reload, so a changed file is read once.
+            if let Some(store) = self.store.as_mut()
+                && !store.gone_briefly()
+            {
+                let read = store.read_if_changed();
+                if read.is_some() || store.read_only() || !self.pending.is_empty() {
+                    self.reload(read);
+                }
             }
         }
     }
@@ -358,10 +363,15 @@ impl Review {
         }
     }
 
-    fn reload(&mut self) {
+    /// Re-reads the notes file, or parses `read` if the caller already read it.
+    fn reload(&mut self, read: Option<std::io::Result<Vec<u8>>>) {
         let Some(store) = &mut self.store else { return };
         let was_read_only = store.read_only();
-        match store.load() {
+        let loaded = match read {
+            Some(read) => store.load_read(read),
+            None => store.load(),
+        };
+        match loaded {
             Ok(list) => {
                 let (list, lost) = model::merge_reload(list, &self.pending);
                 if was_read_only {

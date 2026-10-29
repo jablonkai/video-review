@@ -340,6 +340,13 @@ impl CommentStore {
         std::fs::read(self.file()).ok()
     }
 
+    /// The file as read now, if it differs from the last read or write (see
+    /// [`Self::changed_externally`]); [`Self::load_read`] parses it without a second read.
+    pub fn read_if_changed(&self) -> Option<std::io::Result<Vec<u8>>> {
+        let read = std::fs::read(self.file());
+        (read.as_ref().ok() != self.known.as_ref()).then_some(read)
+    }
+
     /// The file was there at the last read or write and is missing now: a sync
     /// tool or another app may be replacing it by deleting and recreating it.
     fn went_missing(&self) -> bool {
@@ -357,7 +364,11 @@ impl CommentStore {
     /// A missing file is an empty list; a file that can't be read or parsed is
     /// an error and makes the store read-only until a later load succeeds.
     pub fn load(&mut self) -> Result<Vec<Comment>, String> {
-        let read = std::fs::read(self.file());
+        self.load_read(std::fs::read(self.file()))
+    }
+
+    /// [`Self::load`] from an already done read of [`Self::file`].
+    pub fn load_read(&mut self, read: std::io::Result<Vec<u8>>) -> Result<Vec<Comment>, String> {
         let parsed = match &read {
             Ok(raw) => serde_json::from_slice::<FileJson>(raw).map_err(|e| e.to_string()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -416,8 +427,12 @@ impl CommentStore {
             if self.went_missing() {
                 return Err(NOTES_MISSING.to_owned());
             }
-            if self.read_only || self.changed_externally() {
-                let mut fresh = self.load()?;
+            let changed = self.read_if_changed();
+            if self.read_only || changed.is_some() {
+                let mut fresh = match changed {
+                    Some(read) => self.load_read(read)?,
+                    None => self.load()?,
+                };
                 for ch in changes {
                     ch.apply(&mut fresh);
                 }
@@ -1087,6 +1102,26 @@ mod tests {
         assert!(back[1].done);
         assert_eq!(back[2].id, "c");
         assert_eq!(list.len(), 3, "the in-memory list picks up the outside edit too");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn read_if_changed_hands_over_the_outside_edit() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        store.save(&mut [note("a", 1.0)], Fps::Known(24.0)).unwrap();
+        assert!(store.read_if_changed().is_none());
+
+        CommentStore::new(&video).save(&mut [note("a", 1.0), note("c", 3.0)], Fps::Known(24.0)).unwrap();
+        let read = store.read_if_changed().expect("changed");
+        let ids: Vec<_> = store.load_read(read).unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["a", "c"]);
+        assert!(store.read_if_changed().is_none(), "the handed-over read counts as known");
+
+        std::fs::remove_file(store.file()).unwrap();
+        let read = store.read_if_changed().expect("gone");
+        assert!(store.load_read(read).unwrap().is_empty());
+        assert!(store.read_if_changed().is_none());
         std::fs::remove_dir_all(dir).ok();
     }
 
