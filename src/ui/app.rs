@@ -387,9 +387,12 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+    fn on_exit(&mut self, gl: Option<&eframe::glow::Context>) {
         self.r.save_pending();
         self.r.flush_volume();
+        if let Some(gl) = gl {
+            self.r.free_gl(gl);
+        }
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {

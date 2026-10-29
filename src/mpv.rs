@@ -206,6 +206,18 @@ impl Mpv {
         Ok(())
     }
 
+    /// Frees the OpenGL renderer. Call with the GL context current, before eframe
+    /// tears it down; `Drop` would otherwise free it with no context current.
+    pub fn free_render(&mut self) {
+        if self.render.is_null() {
+            return;
+        }
+        // SAFETY: render context is valid and the caller keeps the GL context current.
+        unsafe { mpv_render_context_free(self.render) };
+        self.render = ptr::null_mut();
+        self._redraw = None;
+    }
+
     /// Renders the current frame into `fbo` if mpv has a new one. GL context must be current.
     pub fn render_if_needed(&self, fbo: u32, w: i32, h: i32, force: bool) -> bool {
         if self.render.is_null() {
@@ -303,7 +315,8 @@ impl Mpv {
 
 impl Drop for Mpv {
     fn drop(&mut self) {
-        // SAFETY: render context must go before the core handle.
+        // SAFETY: render context must go before the core handle. Normally
+        // `free_render` already ran from `App::on_exit` with GL current.
         unsafe {
             if !self.render.is_null() {
                 mpv_render_context_free(self.render);

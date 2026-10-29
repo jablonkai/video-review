@@ -345,6 +345,19 @@ impl Review {
         }
     }
 
+    /// Releases mpv's renderer and our FBO/texture while eframe still has the
+    /// GL context current (from `App::on_exit`).
+    pub fn free_gl(&mut self, gl: &glow::Context) {
+        self.mpv.free_render();
+        if let Some(t) = self.target.take() {
+            // SAFETY: called from `on_exit`, where eframe keeps the GL context current.
+            unsafe {
+                gl.delete_framebuffer(t.fbo);
+                gl.delete_texture(t.tex);
+            }
+        }
+    }
+
     /// Lets mpv draw the newest frame into our texture; returns it for egui.
     pub fn video_texture(&mut self, frame: &mut eframe::Frame) -> Option<egui::TextureId> {
         let gl = self.gl.clone()?;
