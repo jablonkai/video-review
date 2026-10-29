@@ -637,6 +637,35 @@ pub mod scenes {
         }
     }
 
+    /// How many of ffmpeg's last error lines a failure message keeps.
+    const ERROR_LINES: usize = 5;
+
+    /// Reads ffmpeg's stderr to the end: stores the `-progress` position in `done_us` and
+    /// returns the last few lines that aren't `-progress` `key=value` lines (the error text).
+    pub(super) fn read_stderr(err: impl BufRead, done_us: &AtomicU64) -> Vec<String> {
+        let mut tail = std::collections::VecDeque::with_capacity(ERROR_LINES);
+        for line in err.lines().map_while(Result::ok) {
+            let line = line.trim();
+            if let Some((key, value)) = line.split_once('=')
+                && !key.is_empty()
+                && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                if let ("out_time_us", Ok(us)) = (key, value.parse::<u64>()) {
+                    done_us.store(us, Ordering::Relaxed);
+                }
+                continue;
+            }
+            if line.is_empty() {
+                continue;
+            }
+            if tail.len() == ERROR_LINES {
+                tail.pop_front();
+            }
+            tail.push_back(line.to_owned());
+        }
+        tail.into()
+    }
+
     fn run(video: &Path, slot: &Slot, done_us: &Arc<AtomicU64>) -> Result<Vec<f64>, String> {
         // Taken before ffmpeg opens the file, so the cache names the version it read.
         let analyzed = stamp(video);
@@ -652,16 +681,10 @@ pub mod scenes {
         };
         // `-progress` writes `out_time_us=…` lines to stderr; read them on their own thread
         // so neither pipe can fill up and stall ffmpeg.
-        if let Some(err) = stderr {
+        let errors = stderr.map(|err| {
             let d = done_us.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(err).lines().map_while(Result::ok) {
-                    if let Some(us) = line.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<u64>().ok()) {
-                        d.store(us, Ordering::Relaxed);
-                    }
-                }
-            });
-        }
+            std::thread::spawn(move || read_stderr(BufReader::new(err), &d))
+        });
         // Read without the lock so `stop` can kill ffmpeg meanwhile; that ends the stream.
         let mut text = String::new();
         if let Some(mut out) = stdout {
@@ -673,7 +696,12 @@ pub mod scenes {
             return Err("stopped".into());
         }
         match status {
-            Some(st) if !st.success() => return Err(format!("ffmpeg failed: {st}")),
+            Some(st) if !st.success() => {
+                drop(s);
+                // ffmpeg has exited, so its stderr is closed and the reader is finishing.
+                let tail = errors.and_then(|h| h.join().ok()).unwrap_or_default();
+                return Err(if tail.is_empty() { format!("ffmpeg failed: {st}") } else { format!("ffmpeg failed: {st}: {}", tail.join("; ")) });
+            }
             _ => {}
         }
         let cuts = parse(&text);
@@ -1166,6 +1194,16 @@ mod tests {
     }
 
     #[test]
+    fn ffmpeg_stderr_keeps_progress_and_error_tail() {
+        let err = "frame=10\nout_time_us=2500000\n[in#0 @ 0x1] Error opening input: Permission denied\n\
+                   progress=continue\na\nb\nc\nd\nError opening input file x.mp4.\n\n";
+        let done = std::sync::atomic::AtomicU64::new(0);
+        let tail = scenes::read_stderr(err.as_bytes(), &done);
+        assert_eq!(done.load(std::sync::atomic::Ordering::Relaxed), 2_500_000);
+        assert_eq!(tail, ["a", "b", "c", "d", "Error opening input file x.mp4."]);
+    }
+
+    #[test]
     fn detection_finds_a_cut_and_can_be_stopped() {
         let Some(ffmpeg) = find_ffmpeg() else { return };
         let (dir, video) = temp_video();
@@ -1200,6 +1238,16 @@ mod tests {
         if r.is_err() {
             assert_eq!(scenes::cached(&video), None);
         }
+
+        // A failure carries ffmpeg's own error text, not just the exit status.
+        let d = scenes::Detection::start(&dir.join("missing.mp4"), || {});
+        let r = loop {
+            if let Some(r) = d.poll() {
+                break r;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert!(r.is_err_and(|e| e.contains("missing.mp4")));
         std::fs::remove_dir_all(dir).ok();
     }
 }
