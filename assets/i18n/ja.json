@@ -138,6 +138,7 @@
   "error.pending_unreadable": "前回のセッションの未保存の変更を読み込めないため、{name} として保管しました: {err}",
   "error.save": "保存できませんでした: {err}",
   "error.notes_broken": "ノートファイルが壊れているため上書きしません",
+  "error.notes_busy": "保存中にメモファイルが変更され続けたため、上書きしませんでした",
   "error.note_deleted_elsewhere": "このノートは別の場所で削除されたため、この変更は保存されませんでした。",
   "error.unsaved_on_quit": "一部の変更をどこにも保存できませんでした。もう一度閉じると破棄されます。",
   "error.ffmpeg_missing": "ffmpeg が見つかりません",

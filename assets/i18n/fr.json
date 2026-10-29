@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Les modifications non enregistrées d’une session précédente sont illisibles et ont été conservées dans {name} : {err}",
   "error.save": "Enregistrement impossible : {err}",
   "error.notes_broken": "le fichier de notes est corrompu et ne sera pas écrasé",
+  "error.notes_busy": "le fichier de notes n'a cessé de changer pendant l'enregistrement, il n'a donc pas été écrasé",
   "error.note_deleted_elsewhere": "La note a été supprimée ailleurs entre-temps, cette modification n'a donc pas été enregistrée.",
   "error.unsaved_on_quit": "Certaines modifications n'ont pu être enregistrées nulle part. Fermez à nouveau pour les abandonner.",
   "error.ffmpeg_missing": "ffmpeg introuvable",

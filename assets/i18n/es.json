@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Los cambios sin guardar de una sesión anterior no se pudieron leer y se conservaron como {name}: {err}",
   "error.save": "No se pudo guardar: {err}",
   "error.notes_broken": "el archivo de notas está dañado y no se sobrescribirá",
+  "error.notes_busy": "el archivo de notas cambió continuamente durante el guardado, así que no se sobrescribió",
   "error.note_deleted_elsewhere": "La nota se borró en otro lugar mientras tanto, así que este cambio no se guardó.",
   "error.unsaved_on_quit": "Algunos cambios no se pudieron guardar en ningún sitio. Cierra de nuevo para descartarlos.",
   "error.ffmpeg_missing": "ffmpeg no encontrado",
