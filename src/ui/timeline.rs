@@ -125,6 +125,21 @@ pub struct RulerDrag {
 }
 
 const STEPS: [f64; 12] = [1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0];
+/// Minimum gap between major ticks, so labels never crowd.
+const MAJOR_PX: f64 = 64.0;
+
+/// Major tick step in seconds for duration `d` over `width` px: the first of
+/// `STEPS` at least `MAJOR_PX` apart, else whole hours derived from the duration,
+/// so the tick count stays bounded by the width even for absurd durations
+/// reported by a broken container. None when there is nothing to draw.
+fn tick_step(d: f64, width: f32) -> Option<f64> {
+    let width = f64::from(width);
+    if !(d > 0.0 && d.is_finite() && width >= 1.0) {
+        return None;
+    }
+    let min = MAJOR_PX * d / width;
+    Some(STEPS.iter().copied().find(|&s| s >= min).unwrap_or_else(|| (min / 3600.0).ceil() * 3600.0))
+}
 
 /// Time ruler with the notes on it. Click seeks, drag selects a range.
 /// Returns true when a range drag just finished (time to write the note).
@@ -219,8 +234,8 @@ pub fn ruler(ui: &mut Ui, r: &mut Review, drag: &mut RulerDrag) -> bool {
     let x = |t: f64| rect.left() + (t / d) as f32 * rect.width();
 
     // Ticks and labels, spaced so labels never crowd.
-    let step = STEPS.iter().copied().find(|s| (s / d) as f32 * rect.width() >= 64.0).unwrap_or(3600.0);
-    let minor_step = step / 5.0;
+    // No step (zero width, non-finite duration): 0 * inf is NaN, so no ticks.
+    let minor_step = tick_step(d, rect.width()).map_or(f64::INFINITY, |s| s / 5.0);
     let mut i = 0;
     while i as f64 * minor_step <= d {
         let tt = i as f64 * minor_step;
@@ -393,6 +408,22 @@ mod tests {
         let lanes = assign_lanes(&[(0.0, 50.0), (1.0, 20.0), (2.0, 60.0), (3.0, 70.0), (4.0, 80.0)]);
         assert_eq!(lanes, vec![0, 1, 2, 3, 1]);
         assert!(assign_lanes(&[]).is_empty());
+    }
+
+    #[test]
+    fn tick_step_stays_bounded() {
+        // A 10-minute video on 640 px: one major tick per minute.
+        assert_eq!(tick_step(600.0, 640.0), Some(60.0));
+        // Past the table: whole hours, still at least MAJOR_PX apart.
+        assert_eq!(tick_step(100.0 * 3600.0, 640.0), Some(36_000.0));
+        // A broken container's ~1e9 s: ticks stay bounded by the width.
+        let (d, w) = (1e9, 1000.0);
+        let step = tick_step(d, w).unwrap();
+        assert!(d / (step / 5.0) <= f64::from(w) / 12.0);
+        assert_eq!(tick_step(0.0, w), None);
+        assert_eq!(tick_step(f64::INFINITY, w), None);
+        assert_eq!(tick_step(f64::NAN, w), None);
+        assert_eq!(tick_step(600.0, 0.0), None);
     }
 
     #[test]
