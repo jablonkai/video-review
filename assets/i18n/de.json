@@ -137,6 +137,7 @@
   "error.save": "Speichern fehlgeschlagen: {err}",
   "error.notes_broken": "die Notizdatei ist beschädigt und wird nicht überschrieben",
   "error.note_deleted_elsewhere": "Die Notiz wurde inzwischen anderswo gelöscht, daher wurde diese Änderung nicht gespeichert.",
+  "error.unsaved_on_quit": "Einige Änderungen konnten nirgends gespeichert werden. Erneut schließen, um sie zu verwerfen.",
   "error.ffmpeg_missing": "ffmpeg nicht gefunden",
 
   "md.summary": { "one": "{n} Notiz, {done} erledigt. Timecode: Non-Drop-Frame (NDF).", "other": "{n} Notizen, {done} erledigt. Timecode: Non-Drop-Frame (NDF)." },

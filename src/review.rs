@@ -1,5 +1,6 @@
 //! All review state plus playback.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -143,6 +144,9 @@ pub struct Review {
     pub comments: Vec<Comment>,
     /// Changes not yet on disk (the file was unreadable); applied again once it reads.
     pending: Vec<Change>,
+    /// Changes of videos switched away from that nothing could be written for, not
+    /// even the pending file: kept here until the video is opened again or the app quits.
+    left_behind: HashMap<PathBuf, (Vec<Change>, Fps)>,
     pub undo: Option<Undo>,
     pub cuts: Vec<f64>,
     pub scenes_status: ScenesStatus,
@@ -201,6 +205,7 @@ impl Review {
             error: None,
             comments: Vec::new(),
             pending: Vec::new(),
+            left_behind: HashMap::new(),
             undo: None,
             cuts: Vec::new(),
             scenes_status: ScenesStatus::Pending,
@@ -451,8 +456,13 @@ impl Review {
     }
 
     pub fn load_video(&mut self, path: &Path) {
-        // One last try with this video's fps; what still can't be written waits in the store's pending file.
-        self.save_pending();
+        // One last try with this video's fps; what still can't be written waits in the
+        // store's pending file, or here if even that fails.
+        if !self.save_pending()
+            && let Some(old) = self.current.clone()
+        {
+            self.left_behind.insert(old, (std::mem::take(&mut self.pending), self.fps_now()));
+        }
         self.current = Some(path.to_owned());
         let mut prefs = load_prefs();
         prefs.video = Some(path.to_owned());
@@ -481,10 +491,12 @@ impl Review {
             }
         };
         // Left over from an earlier session; the poll writes them once the fps is known.
-        self.pending = store.load_pending().unwrap_or_else(|e| {
+        let from_file = store.load_pending().unwrap_or_else(|e| {
             self.error = Some(e);
             Vec::new()
         });
+        // Changes kept in memory are newer than (and include) what the pending file holds.
+        self.pending = self.left_behind.remove(path).map_or(from_file, |(changes, _)| changes);
         for ch in &self.pending {
             ch.apply(&mut self.comments);
         }
@@ -834,8 +846,12 @@ impl Review {
         }
     }
 
+    fn fps_now(&self) -> Fps {
+        if self.fps_known { Fps::Known(self.fps) } else { Fps::Estimate(self.fps) }
+    }
+
     fn flush(&mut self) {
-        let fps = if self.fps_known { Fps::Known(self.fps) } else { Fps::Estimate(self.fps) };
+        let fps = self.fps_now();
         let Some(store) = &mut self.store else { return };
         // Kept in `pending` (and its file) while the notes file is unreadable; the poll retries.
         if let Err(e) = store.flush(&mut self.comments, &mut self.pending, fps) {
@@ -843,11 +859,25 @@ impl Review {
         }
     }
 
-    /// Writes changes still waiting, before leaving the video or quitting.
-    pub fn save_pending(&mut self) {
+    /// Writes changes still waiting, before leaving the video. False if some are
+    /// left that only memory holds (neither the notes file nor the pending file took them).
+    pub fn save_pending(&mut self) -> bool {
         if !self.pending.is_empty() {
             self.flush();
         }
+        self.pending.is_empty() || self.store.as_ref().is_some_and(|s| s.pending_on_disk())
+    }
+
+    /// [`Self::save_pending`] for every video, before quitting. False if changes
+    /// would be lost.
+    pub fn save_all(&mut self) -> bool {
+        let mut saved = self.save_pending();
+        self.left_behind.retain(|video, (changes, fps)| {
+            let kept = !save_left_behind(video, changes, *fps);
+            saved &= !kept;
+            kept
+        });
+        saved
     }
 
     pub fn focus_comment(&mut self, id: &str) {
@@ -937,6 +967,22 @@ pub fn is_active(c: &Comment, t: f64, fps: f64) -> bool {
         Some(out) => (f(c.t_in)..f(out)).contains(&f(t)),
         None => f(t) == f(c.t_in),
     }
+}
+
+/// Writes changes of a video that isn't open; leaves in `changes` what couldn't be
+/// written. False if some exist only in `changes` (not even in the pending file).
+fn save_left_behind(video: &Path, changes: &mut Vec<Change>, fps: Fps) -> bool {
+    let mut store = CommentStore::new(video);
+    // Moves aside (or leaves alone) a pending file that doesn't parse, as opening the video
+    // would; one that does holds a subset of `changes`, so it is written over.
+    let _ = store.load_pending();
+    // An unreadable file makes the commit fail and the changes go to the pending file.
+    let mut list = store.load().unwrap_or_default();
+    for ch in changes.iter() {
+        ch.apply(&mut list);
+    }
+    let _ = store.flush(&mut list, changes, fps);
+    changes.is_empty() || store.pending_on_disk()
 }
 
 #[cfg(test)]
@@ -1044,5 +1090,40 @@ mod tests {
         assert!(!is_active(&range, 1.9, fps));
         let general = Comment { t_in: 0.0, t_out: None, general: true, ..range };
         assert!(!is_active(&general, 0.0, fps), "a whole-video note has no frame");
+    }
+
+    #[test]
+    fn changes_left_behind_are_written_once_possible() {
+        let dir = std::env::temp_dir().join(format!("vr-test-{}", Comment::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let video = dir.join("a.mp4");
+        let store = CommentStore::new(&video);
+        let note = Comment {
+            id: "x".into(),
+            text: "x".into(),
+            t_in: 2.0,
+            t_out: None,
+            area: None,
+            scenes: None,
+            done: false,
+            created: None,
+            general: false,
+            extra: Default::default(),
+        };
+        // Broken notes file and a pending file that can't be parsed nor moved aside.
+        std::fs::write(store.file(), "{").unwrap();
+        std::fs::write(store.bad_pending_file(), "old").unwrap();
+        std::fs::write(store.pending_file(), "nope").unwrap();
+        let mut changes = vec![Change::Put(note)];
+        assert!(!save_left_behind(&video, &mut changes, Fps::Known(24.0)));
+        assert_eq!(changes.len(), 1, "still held in memory");
+        assert_eq!(std::fs::read(store.pending_file()).unwrap(), b"nope", "never written over");
+
+        std::fs::write(store.file(), r#"{"comments": [{"t_in": 1.0, "text": "f", "id": "f"}]}"#).unwrap();
+        assert!(save_left_behind(&video, &mut changes, Fps::Known(24.0)));
+        assert!(changes.is_empty());
+        let ids: Vec<String> = CommentStore::new(&video).load().unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["f", "x"]);
+        std::fs::remove_dir_all(dir).ok();
     }
 }

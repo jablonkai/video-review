@@ -137,6 +137,7 @@
   "error.save": "无法保存：{err}",
   "error.notes_broken": "批注文件已损坏，不会被覆盖",
   "error.note_deleted_elsewhere": "该批注已在别处被删除，因此此更改未保存。",
+  "error.unsaved_on_quit": "部分更改无法保存到任何位置。再次关闭将放弃这些更改。",
   "error.ffmpeg_missing": "未找到 ffmpeg",
 
   "md.summary": { "other": "{n} 条批注，{done} 条已完成。时间码：非丢帧 (NDF)。" },

@@ -258,6 +258,8 @@ pub struct CommentStore {
     extra: JsonMap,
     /// The pending file could not be parsed nor moved aside: never write or remove it.
     pending_locked: bool,
+    /// The changes left over by the last [`Self::flush`] are on disk (or there were none).
+    pending_on_disk: bool,
 }
 
 /// The frame rate a save writes, with how sure the player is about it.
@@ -279,6 +281,7 @@ impl CommentStore {
             file_fps: None,
             extra: JsonMap::new(),
             pending_locked: false,
+            pending_on_disk: true,
         }
     }
 
@@ -391,7 +394,14 @@ impl CommentStore {
         } else {
             serde_json::to_vec_pretty(pending).map_err(std::io::Error::from).and_then(|b| write_atomic(&file, &b))
         };
+        self.pending_on_disk = pending.is_empty() || (!self.pending_locked && kept.is_ok());
         result.and(kept.map_err(|e| trf("error.save", &[("err", &e)])))
+    }
+
+    /// False if the last [`Self::flush`] left changes that neither the notes file
+    /// nor the pending file holds: dropping them loses them.
+    pub fn pending_on_disk(&self) -> bool {
+        self.pending_on_disk
     }
 
     /// Changes a previous session could not write (see [`Self::flush`]). A file that
@@ -892,6 +902,31 @@ mod tests {
         assert!(pending.is_empty());
         assert!(!store.pending_file().exists(), "removed once written");
         assert_eq!(store.load().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["f", "x"]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn pending_on_disk_tells_whether_only_memory_holds_the_changes() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.file(), "{").unwrap();
+        let mut list = store.load().unwrap_or_default();
+        let mut pending = vec![Change::Put(note("x", 2.0))];
+        assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
+        assert!(store.pending_on_disk(), "in the pending file");
+
+        // The pending file can neither be parsed nor moved aside: nothing on disk holds them.
+        std::fs::write(store.bad_pending_file(), "old").unwrap();
+        std::fs::write(store.pending_file(), "nope").unwrap();
+        let mut store = CommentStore::new(&video);
+        assert!(store.load_pending().is_err());
+        assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
+        assert_eq!(pending.len(), 1);
+        assert!(!store.pending_on_disk());
+
+        std::fs::write(store.file(), "{}").unwrap();
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
+        assert!(store.pending_on_disk(), "nothing left");
         std::fs::remove_dir_all(dir).ok();
     }
 
