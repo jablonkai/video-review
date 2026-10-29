@@ -1,0 +1,59 @@
+name: Release
+
+# Pushing a vX.Y.Z tag builds the drag-to-install DMG and publishes it as a GitHub Release,
+# with the matching CHANGELOG.md section as the notes. The DMG is not code-signed.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Read-only by default; only the release job gets write access, to create the release.
+permissions:
+  contents: read
+
+# Actions are pinned to commit SHAs (a moved tag can't change what runs); Dependabot keeps them current.
+jobs:
+  release:
+    # Apple Silicon runner: the .app is arm64-only and links Homebrew's libmpv in /opt/homebrew.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install libmpv
+        run: brew install mpv
+      # rustup installs the toolchain and components pinned in rust-toolchain.toml.
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+      - name: Check the tag matches Cargo.toml
+        id: version
+        run: |
+          VERSION=$(cargo pkgid | sed 's/.*[#@]//')
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Lines after "## [X.Y.Z]" up to the next "## [" heading or link reference.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no section for [$VERSION]"
+            exit 1
+          fi
+      - name: Build the DMG
+        run: ./tools/make-dmg.sh
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "target/release/Video Review-$VERSION.dmg" \
+            --title "Video Review $VERSION" --notes-file release-notes.md --verify-tag
