@@ -17,6 +17,9 @@ const PARALLEL: usize = 3;
 const CACHE_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 /// A failed grab is not asked for again before this, so a bad frame doesn't respawn ffmpeg every frame.
 const RETRY_AFTER: Duration = Duration::from_secs(5);
+/// A grab still running after this is treated as hung (stalled network share, damaged file) and
+/// killed, so it can't hold one of the few workers for the rest of the session.
+const GRAB_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// The cache directory of the open video. The startup prune holds the lock while deleting,
 /// and skips this one, so the video being opened never loses its folder mid-prune.
@@ -191,15 +194,13 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
         let _ = std::fs::create_dir_all(&job.dir);
         // Write beside it and rename, so an interrupted grab never leaves a truncated jpg.
         let tmp = tmp_path(&job.dir, job.ms);
-        let status = Command::new(ffmpeg)
-            .args(["-v", "error", "-ss", &format!("{:.3}", job.ms as f64 / 1000.0), "-i"])
+        let mut cmd = Command::new(ffmpeg);
+        cmd.args(["-v", "error", "-ss", &format!("{:.3}", job.ms as f64 / 1000.0), "-i"])
             .arg(&job.video)
             .args(["-frames:v", "1", "-vf", &format!("scale={WIDTH}:-2"), "-q:v", "4", "-f", "mjpeg", "-y"])
             .arg(&tmp)
-            .stdin(Stdio::null())
-            .status()
-            .ok()?;
-        if !status.success() || std::fs::rename(&tmp, &file).is_err() {
+            .stdin(Stdio::null());
+        if !run_with_timeout(&mut cmd, GRAB_TIMEOUT) || std::fs::rename(&tmp, &file).is_err() {
             let _ = std::fs::remove_file(&tmp);
             return None;
         }
@@ -212,6 +213,24 @@ fn make(ffmpeg: &Path, job: &Job) -> Option<ColorImage> {
     let img = img.to_rgba8();
     let size = [img.width() as usize, img.height() as usize];
     Some(ColorImage::from_rgba_unmultiplied(size, img.as_raw()))
+}
+
+/// Runs `cmd` and reports whether it exited successfully within `timeout`; past it, the process is
+/// killed and reaped, and the run counts as failed.
+fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> bool {
+    let Ok(mut child) = cmd.spawn() else { return false };
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
 }
 
 /// A temp file name unique to this grab. Jobs for the same frame can overlap (switching A -> B -> A
@@ -270,6 +289,15 @@ mod tests {
 
     fn entry(name: &str, size: u64, secs: u64) -> (PathBuf, u64, SystemTime) {
         (PathBuf::from(name), size, SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
+    }
+
+    #[test]
+    fn run_with_timeout_kills_hung_process() {
+        let started = Instant::now();
+        assert!(!run_with_timeout(Command::new("sleep").arg("10"), Duration::from_millis(200)));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(run_with_timeout(&mut Command::new("true"), Duration::from_secs(5)));
+        assert!(!run_with_timeout(&mut Command::new("false"), Duration::from_secs(5)));
     }
 
     #[test]
