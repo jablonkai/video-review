@@ -137,6 +137,7 @@
   "error.save": "Salvataggio non riuscito: {err}",
   "error.notes_broken": "il file delle note è danneggiato e non verrà sovrascritto",
   "error.note_deleted_elsewhere": "Nel frattempo la nota è stata eliminata altrove, quindi questa modifica non è stata salvata.",
+  "error.unsaved_on_quit": "Alcune modifiche non sono state salvate da nessuna parte. Chiudi di nuovo per scartarle.",
   "error.ffmpeg_missing": "ffmpeg non trovato",
 
   "md.summary": { "one": "{n} nota, {done} fatta. Timecode: non-drop frame (NDF).", "other": "{n} note, {done} fatte. Timecode: non-drop frame (NDF)." },

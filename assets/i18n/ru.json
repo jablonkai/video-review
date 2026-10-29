@@ -137,6 +137,7 @@
   "error.save": "Не удалось сохранить: {err}",
   "error.notes_broken": "файл заметок повреждён и не будет перезаписан",
   "error.note_deleted_elsewhere": "Тем временем заметка была удалена в другом месте, поэтому это изменение не сохранено.",
+  "error.unsaved_on_quit": "Некоторые изменения не удалось сохранить. Закройте ещё раз, чтобы отказаться от них.",
   "error.ffmpeg_missing": "ffmpeg не найден",
 
   "md.summary": { "one": "{n} заметка, {done} готово. Таймкод: non-drop frame (NDF).", "few": "{n} заметки, {done} готово. Таймкод: non-drop frame (NDF).", "many": "{n} заметок, {done} готово. Таймкод: non-drop frame (NDF).", "other": "{n} заметок, {done} готово. Таймкод: non-drop frame (NDF)." },

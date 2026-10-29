@@ -32,6 +32,8 @@ pub struct App {
     ruler: RulerDrag,
     stage: StageDrag,
     help: bool,
+    /// A close was held back once because changes could not be saved; the next one goes through.
+    close_warned: bool,
 }
 
 impl App {
@@ -45,7 +47,7 @@ impl App {
         } else {
             r.open_paths(paths)
         }
-        Ok(Self { r, panel: PanelState::default(), ruler: RulerDrag::default(), stage: StageDrag::default(), help: false })
+        Ok(Self { r, panel: PanelState::default(), ruler: RulerDrag::default(), stage: StageDrag::default(), help: false, close_warned: false })
     }
 
     fn focus_draft(&mut self) {
@@ -392,7 +394,7 @@ impl App {
 
 impl eframe::App for App {
     fn on_exit(&mut self, gl: Option<&eframe::glow::Context>) {
-        self.r.save_pending();
+        self.r.save_all();
         self.r.flush_volume();
         if let Some(gl) = gl {
             self.r.free_gl(gl);
@@ -402,6 +404,11 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.r.update();
+        if ctx.input(|i| i.viewport().close_requested()) && !self.close_warned && !self.r.save_all() {
+            self.close_warned = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.r.error = Some(tr("error.unsaved_on_quit"));
+        }
         let dropped: Vec<PathBuf> =
             ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if !dropped.is_empty() {

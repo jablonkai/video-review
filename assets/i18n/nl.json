@@ -137,6 +137,7 @@
   "error.save": "Opslaan mislukt: {err}",
   "error.notes_broken": "het notitiebestand is beschadigd en wordt niet overschreven",
   "error.note_deleted_elsewhere": "De notitie is intussen elders verwijderd, dus deze wijziging is niet opgeslagen.",
+  "error.unsaved_on_quit": "Sommige wijzigingen konden nergens worden opgeslagen. Sluit opnieuw om ze te verwerpen.",
   "error.ffmpeg_missing": "ffmpeg niet gevonden",
 
   "md.summary": { "one": "{n} notitie, {done} klaar. Timecode: non-drop frame (NDF).", "other": "{n} notities, {done} klaar. Timecode: non-drop frame (NDF)." },
