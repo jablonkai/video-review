@@ -32,12 +32,12 @@ cargo run --release -- <folder-or-videos...>   # a folder or video files
 ## macOS installer
 
 ```sh
-./tools/make-dmg.sh   # -> target/release/Video Review-0.1.0.dmg
+./tools/make-dmg.sh   # -> target/release/Video Review-<version>.dmg
 ```
 
 The script builds the `.app` (via `tools/bundle-macos.sh`) and wraps it in a
 drag-to-install disk image containing `Video Review.app`, an `Applications`
-alias, and a ReadMe (hu/en).
+alias, and a ReadMe (hu/en). `<version>` is the `version` in `Cargo.toml`.
 
 The app is **not code-signed** (no Apple Developer ID), so on first launch the
 user must right-click the app and choose **Open**. libmpv is not bundled: the
@@ -65,6 +65,8 @@ text); a test checks that each catalog has exactly the English keys, placeholder
 
 | File | What |
 |---|---|
+| `src/main.rs` | entry point: eframe with the Glow renderer, CLI paths |
+| `src/open_with.rs` | Finder "Open With" and Dock drops (`odoc` Apple Event) |
 | `src/mpv.rs` | libmpv client + OpenGL render API binding |
 | `src/model.rs` | comments/scenes JSON, timecode, ffmpeg scene detection (unit tests) |
 | `src/thumbs.rs` | ffmpeg frame grabs, 3 workers, newest request first |
@@ -80,8 +82,10 @@ Fonts: Archivo and Source Serif 4 (OFL), Material Icons (Apache 2.0); licenses i
 ## Tests
 
 ```sh
-cargo test
+cargo test                                  # CI gate; unit tests live in-file (#[cfg(test)])
+cargo fmt --check                           # CI gate
 cargo clippy --all-targets -- -D warnings   # CI gate
+cargo deny check advisories                 # CI gate (RustSec advisories; `cargo install cargo-deny`)
 ```
 
 The UI was checked end to end with real mouse/keyboard events
