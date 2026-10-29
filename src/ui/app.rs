@@ -18,6 +18,14 @@ use crate::ui::timeline::{RulerDrag, filmstrip, ruler};
 /// auto-repeat. The stepping keys (arrows, J, N, P) keep repeating.
 const ONE_SHOT_KEYS: [Key; 9] = [Key::Space, Key::K, Key::L, Key::I, Key::O, Key::S, Key::M, Key::Enter, Key::Escape];
 
+/// Rows of the `?` help table, by group title key. Catalog keys:
+/// `help.<row>.k` is the key or gesture, `help.<row>.d` what it does.
+const GROUPS: &[(&str, &[&str])] = &[
+    ("help.playback", &["space", "k", "l", "j", "arrows", "shift_arrows", "updown"]),
+    ("help.target", &["s", "io", "drag_ruler", "click_film", "redetect", "click_pic", "drag_pic", "esc"]),
+    ("help.notes", &["m", "enter", "np", "undo", "mark"]),
+];
+
 pub struct App {
     r: Review,
     panel: PanelState,
@@ -340,12 +348,6 @@ impl App {
         if !self.help {
             return;
         }
-        // Catalog keys: `help.<row>.k` is the key or gesture, `help.<row>.d` what it does.
-        const GROUPS: &[(&str, &[&str])] = &[
-            ("help.playback", &["space", "k", "l", "j", "arrows", "shift_arrows", "updown"]),
-            ("help.target", &["s", "io", "drag_ruler", "click_film", "redetect", "click_pic", "drag_pic", "esc"]),
-            ("help.notes", &["m", "enter", "np", "undo", "mark"]),
-        ];
         let frame = Frame::NONE.fill(theme::PANEL).stroke(Stroke::new(1.0, theme::HAIRLINE)).corner_radius(8).inner_margin(Margin {
             left: 28,
             right: 28,
@@ -586,5 +588,25 @@ fn language_menu(ui: &mut Ui, r: &mut Review, named: bool) {
     });
     if let Some(lang) = pick.filter(|l| *l != current) {
         r.set_language(lang);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GROUPS;
+
+    /// The help table builds its keys at runtime, so the catalog test (which
+    /// only compares catalogs with each other) can't see a row missing from all.
+    #[test]
+    fn help_rows_have_catalog_keys() {
+        let en: serde_json::Map<String, serde_json::Value> = serde_json::from_str(include_str!("../../assets/i18n/en.json")).unwrap();
+        for (title, rows) in GROUPS {
+            assert!(en.contains_key(*title), "{title}");
+            for row in *rows {
+                for key in [format!("help.{row}.k"), format!("help.{row}.d")] {
+                    assert!(en.contains_key(&key), "{key}");
+                }
+            }
+        }
     }
 }

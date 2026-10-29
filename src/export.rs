@@ -452,6 +452,43 @@ mod tests {
     }
 
     #[test]
+    fn fcpxml_fractional_rates() {
+        for (fps, list, want) in fractional_cases() {
+            let s = fcpxml(&list, &meta(fps));
+            // NTSC rates: 1001/(nominal * 1000) s per frame.
+            let nominal = fps.round() as i64;
+            let den = nominal * 1000;
+            assert!(s.contains(&format!("<format id=\"r1\" frameDuration=\"1001/{den}s\"/>")), "{fps} fps\n{s}");
+            let mut sorted = list.clone();
+            sorted.sort_by(|a, b| a.t_in.total_cmp(&b.t_in));
+            let mut last = 0;
+            let markers: Vec<String> = want
+                .iter()
+                .zip(&sorted)
+                .map(|((tin, _, _, dur), c)| {
+                    // Frame index back from the NDF timecode: HH:MM:SS counts nominal frames per second.
+                    let p: Vec<i64> = tin.split(':').map(|x| x.parse().unwrap()).collect();
+                    let a = ((p[0] * 60 + p[1]) * 60 + p[2]) * nominal + p[3];
+                    last = last.max(a + dur);
+                    format!(
+                        "<marker start=\"{}/{den}s\" duration=\"{}/{den}s\" value=\"{}\" completed=\"{}\"/>",
+                        a * 1001,
+                        dur * 1001,
+                        c.text,
+                        u8::from(c.done)
+                    )
+                })
+                .collect();
+            let got: Vec<&str> = s.lines().map(str::trim).filter(|l| l.starts_with("<marker ")).collect();
+            assert_eq!(got, markers, "{fps} fps\n{s}");
+            // Every case runs past the 10 s video, so the last marker's end sets the length.
+            let dur = format!("duration=\"{}/{den}s\"", last * 1001);
+            assert!(s.contains(&format!("<sequence format=\"r1\" {dur} tcStart=\"0s\" tcFormat=\"NDF\">")), "{fps} fps\n{s}");
+            assert!(s.contains(&format!("start=\"0s\" {dur}>")), "{fps} fps\n{s}");
+        }
+    }
+
+    #[test]
     fn markdown_fractional_rates() {
         for (fps, list, want) in fractional_cases() {
             let s = markdown(&list, &meta(fps));
