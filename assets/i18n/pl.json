@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "następna lub poprzednia notatka",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "cofnij ostatnie usunięcie lub oznaczenie jako gotowe",
+  "help.undo.d": "cofnij ostatnią zmianę notatek",
   "help.mark.k": "znacznik na linijce",
   "help.mark.d": "otwiera notatkę; nakładające się zmieniają się z każdym kliknięciem",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Oznaczono jako gotowe",
   "undo.reopened": "Otwarto ponownie",
   "undo.deleted": "Notatka usunięta",
+  "undo.added": "Notatka dodana",
+  "undo.edited": "Notatka edytowana",
   "ruler.stack": { "one": "{n} notatka tutaj — kliknij, aby przełączać", "few": "{n} notatki tutaj — kliknij, aby przełączać", "many": "{n} notatek tutaj — kliknij, aby przełączać", "other": "{n} notatek tutaj — kliknij, aby przełączać" },
   "mark.new": "nowa",
 

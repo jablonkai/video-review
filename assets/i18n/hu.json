@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "következő vagy előző jegyzet",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "az utolsó törlés vagy kész-jelölés visszavonása",
+  "help.undo.d": "az utolsó jegyzetmódosítás visszavonása",
   "help.mark.k": "jelölés a vonalzón",
   "help.mark.d": "megnyitja; az egymást fedők kattintásonként váltakoznak",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Késznek jelölve",
   "undo.reopened": "Újranyitva",
   "undo.deleted": "Jegyzet törölve",
+  "undo.added": "Jegyzet hozzáadva",
+  "undo.edited": "Jegyzet szerkesztve",
   "ruler.stack": { "one": "{n} jegyzet itt — kattintásra váltakoznak", "other": "{n} jegyzet itt — kattintásra váltakoznak" },
   "mark.new": "új",
 

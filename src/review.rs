@@ -110,12 +110,41 @@ impl Debounce {
     }
 }
 
-/// The last delete or done/undone, and the change that takes it back.
+/// A note change (add, text edit, done/undone, delete), and the change that takes it back.
 pub struct Undo {
     /// Catalog key of the notice (`undo.*`), translated when shown.
     pub label: &'static str,
     change: Change,
     pub at: Instant,
+}
+
+/// How many note changes Cmd+Z can take back.
+const UNDO_DEPTH: usize = 20;
+
+/// The last `UNDO_DEPTH` note changes of the current video, newest last; the oldest falls off.
+#[derive(Default)]
+pub struct UndoStack(Vec<Undo>);
+
+impl UndoStack {
+    fn push(&mut self, u: Undo) {
+        if self.0.len() == UNDO_DEPTH {
+            self.0.remove(0);
+        }
+        self.0.push(u);
+    }
+
+    fn pop(&mut self) -> Option<Undo> {
+        self.0.pop()
+    }
+
+    /// The change the next undo takes back.
+    pub fn last(&self) -> Option<&Undo> {
+        self.0.last()
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 const VOLUME_SAVE_DELAY: Duration = Duration::from_millis(500);
@@ -147,7 +176,7 @@ pub struct Review {
     /// Changes of videos switched away from that nothing could be written for, not
     /// even the pending file: kept here until the video is opened again or the app quits.
     left_behind: HashMap<PathBuf, (Vec<Change>, Fps)>,
-    pub undo: Option<Undo>,
+    pub undo: UndoStack,
     pub cuts: Vec<f64>,
     pub scenes_status: ScenesStatus,
     /// Why detection failed, for the tooltip.
@@ -206,7 +235,7 @@ impl Review {
             comments: Vec::new(),
             pending: Vec::new(),
             left_behind: HashMap::new(),
-            undo: None,
+            undo: UndoStack::default(),
             cuts: Vec::new(),
             scenes_status: ScenesStatus::Pending,
             scenes_error: String::new(),
@@ -481,7 +510,7 @@ impl Review {
         self.area = None;
         self.focus_id = None;
         self.hover_id = None;
-        self.undo = None;
+        self.undo.clear();
         let mut store = CommentStore::new(path);
         self.comments = match store.load() {
             Ok(list) => list,
@@ -797,14 +826,17 @@ impl Review {
         self.sel = None;
         self.pending_in = None;
         self.area = None;
+        self.remember_undo("undo.added", Change::Remove(c.id.clone()));
         self.change(Change::Put(c));
     }
 
     pub fn update_text(&mut self, id: &str, text: &str) {
         let text = text.trim();
-        if text.is_empty() {
+        let Some(old) = self.comments.iter().find(|c| c.id == id).map(|c| c.text.clone()) else { return };
+        if text.is_empty() || text == old {
             return;
         }
+        self.remember_undo("undo.edited", Change::Text { id: id.to_owned(), text: old });
         self.change(Change::Text { id: id.to_owned(), text: text.to_owned() });
     }
 
@@ -825,12 +857,17 @@ impl Review {
     }
 
     fn remember_undo(&mut self, label: &'static str, change: Change) {
-        self.undo = Some(Undo { label, change, at: Instant::now() });
+        self.undo.push(Undo { label, change, at: Instant::now() });
     }
 
-    /// Takes back the last delete or done/undone. One step only.
+    /// Takes back the last note change; repeated, the ones before it (up to `UNDO_DEPTH`).
     pub fn undo(&mut self) {
-        if let Some(u) = self.undo.take() {
+        if let Some(u) = self.undo.pop() {
+            if let Change::Remove(id) = &u.change
+                && self.focus_id.as_deref() == Some(id.as_str())
+            {
+                self.focus_id = None;
+            }
             self.change(u.change);
         }
     }
@@ -1006,6 +1043,28 @@ mod tests {
         assert!(d.take());
         assert!(!d.take());
         assert!(!d.fire(t0 + ms(2000)), "taken, so nothing left to fire");
+    }
+
+    #[test]
+    fn undo_stack_keeps_the_newest_and_pops_in_reverse() {
+        let undo = |n: usize| Undo { label: "undo.added", change: Change::Remove(n.to_string()), at: Instant::now() };
+        let id = |u: Option<Undo>| match u.map(|u| u.change) {
+            Some(Change::Remove(id)) => id,
+            _ => panic!("expected a Remove"),
+        };
+        let mut s = UndoStack::default();
+        for n in 0..UNDO_DEPTH + 3 {
+            s.push(undo(n));
+        }
+        assert!(matches!(&s.last().unwrap().change, Change::Remove(id) if *id == (UNDO_DEPTH + 2).to_string()));
+        assert_eq!(id(s.pop()), (UNDO_DEPTH + 2).to_string());
+        assert_eq!(id(s.pop()), (UNDO_DEPTH + 1).to_string());
+        let rest: Vec<_> = std::iter::from_fn(|| s.pop()).collect();
+        assert_eq!(rest.len(), UNDO_DEPTH - 2, "the three oldest fell off");
+        assert!(matches!(&rest.last().unwrap().change, Change::Remove(id) if id == "3"));
+        s.push(undo(0));
+        s.clear();
+        assert!(s.last().is_none());
     }
 
     #[test]

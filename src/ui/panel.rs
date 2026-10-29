@@ -13,7 +13,7 @@ use crate::ui::pencil::{GreasePencil, tag};
 use crate::ui::timeline::cover_uv;
 
 const NOTE_W: f32 = 108.0;
-/// How long the undo offer stays on screen; Cmd+Z works until the next delete or done.
+/// How long the undo offer stays on screen; Cmd+Z works on the last 20 changes until a video switch.
 const UNDO_SHOWN: Duration = Duration::from_secs(8);
 
 #[derive(Default)]
@@ -102,9 +102,9 @@ enum RowAction {
     Focus,
 }
 
-/// File problems, and the undo offer after a delete or done.
+/// File problems, and the undo offer after a note change.
 fn notices(ui: &mut Ui, r: &mut Review) {
-    let undo_left = r.undo.as_ref().map(|u| UNDO_SHOWN.saturating_sub(u.at.elapsed())).filter(|d| !d.is_zero());
+    let undo_left = r.undo.last().map(|u| UNDO_SHOWN.saturating_sub(u.at.elapsed())).filter(|d| !d.is_zero());
     if r.error.is_none() && undo_left.is_none() {
         return;
     }
@@ -119,7 +119,7 @@ fn notices(ui: &mut Ui, r: &mut Review) {
                 }
             });
         }
-        if let (Some(left), Some(label)) = (undo_left, r.undo.as_ref().map(|u| u.label)) {
+        if let (Some(left), Some(label)) = (undo_left, r.undo.last().map(|u| u.label)) {
             ui.ctx().request_repaint_after(left);
             Frame::NONE.fill(theme::RAISED).corner_radius(5).inner_margin(Margin { left: 12, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
                 ui.horizontal(|ui| {

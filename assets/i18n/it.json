@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "nota successiva o precedente",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "annulla l'ultima eliminazione o segno di fatto",
+  "help.undo.d": "annulla l'ultima modifica alle note",
   "help.mark.k": "segno sul righello",
   "help.mark.d": "lo apre; quelli sovrapposti si alternano a ogni clic",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Segnata come fatta",
   "undo.reopened": "Riaperta",
   "undo.deleted": "Nota eliminata",
+  "undo.added": "Nota aggiunta",
+  "undo.edited": "Nota modificata",
   "ruler.stack": { "one": "{n} nota qui — clic per scorrere", "other": "{n} note qui — clic per scorrere" },
   "mark.new": "nuova",
 

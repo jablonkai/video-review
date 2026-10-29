@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "nächste oder vorherige Notiz",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "letztes Löschen oder Erledigt-Markieren rückgängig machen",
+  "help.undo.d": "letzte Änderung an Notizen rückgängig machen",
   "help.mark.k": "Markierung auf dem Lineal",
   "help.mark.d": "öffnet sie; überlappende wechseln mit jedem Klick",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Als erledigt markiert",
   "undo.reopened": "Wieder geöffnet",
   "undo.deleted": "Notiz gelöscht",
+  "undo.added": "Notiz hinzugefügt",
+  "undo.edited": "Notiz bearbeitet",
   "ruler.stack": { "one": "{n} Notiz hier — klicken zum Wechseln", "other": "{n} Notizen hier — klicken zum Wechseln" },
   "mark.new": "neu",
 

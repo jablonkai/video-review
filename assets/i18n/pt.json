@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "próxima nota ou anterior",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "desfazer a última exclusão ou marca de concluído",
+  "help.undo.d": "desfazer a última alteração nas notas",
   "help.mark.k": "marca na régua",
   "help.mark.d": "abre a nota; as sobrepostas alternam a cada clique",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Marcada como concluída",
   "undo.reopened": "Reaberta",
   "undo.deleted": "Nota excluída",
+  "undo.added": "Nota adicionada",
+  "undo.edited": "Nota editada",
   "ruler.stack": { "one": "{n} nota aqui — clique para alternar", "other": "{n} notas aqui — clique para alternar" },
   "mark.new": "nova",
 
