@@ -132,6 +132,7 @@
   "error.open_video": "動画を開けませんでした（{name}）: {why}",
   "error.no_video": "指定した場所に動画が見つかりません。",
   "error.notes_unreadable": "ノートファイルを読み込めないため上書きしません（{name}）: {err}",
+  "error.pending_unreadable": "前回のセッションの未保存の変更を読み込めないため、{name} として保管しました: {err}",
   "error.save": "保存できませんでした: {err}",
   "error.notes_broken": "ノートファイルが壊れているため上書きしません",
   "error.note_deleted_elsewhere": "このノートは別の場所で削除されたため、この変更は保存されませんでした。",

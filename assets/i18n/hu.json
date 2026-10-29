@@ -132,6 +132,7 @@
   "error.open_video": "A videót nem sikerült megnyitni ({name}): {why}",
   "error.no_video": "A megadott helyen nincs videó.",
   "error.notes_unreadable": "A jegyzetfájl olvashatatlan, és nem lesz felülírva ({name}): {err}",
+  "error.pending_unreadable": "Egy korábbi munkamenet mentetlen módosításai nem olvashatók; a fájl {name} néven megmaradt: {err}",
   "error.save": "A mentés nem sikerült: {err}",
   "error.notes_broken": "a jegyzetfájl sérült, és nem lesz felülírva",
   "error.note_deleted_elsewhere": "A jegyzetet közben máshol törölték, ezért ez a módosítás nem lett mentve.",

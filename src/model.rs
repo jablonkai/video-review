@@ -256,6 +256,8 @@ pub struct CommentStore {
     file_fps: Option<f64>,
     /// Top-level keys of the file this app doesn't model, written back unchanged.
     extra: JsonMap,
+    /// The pending file could not be parsed nor moved aside: never write or remove it.
+    pending_locked: bool,
 }
 
 /// The frame rate a save writes, with how sure the player is about it.
@@ -269,7 +271,15 @@ pub enum Fps {
 
 impl CommentStore {
     pub fn new(video: &Path) -> Self {
-        Self { video: video.to_owned(), known: None, read_only: false, needs_backup: false, file_fps: None, extra: JsonMap::new() }
+        Self {
+            video: video.to_owned(),
+            known: None,
+            read_only: false,
+            needs_backup: false,
+            file_fps: None,
+            extra: JsonMap::new(),
+            pending_locked: false,
+        }
     }
 
     pub fn file(&self) -> PathBuf {
@@ -284,6 +294,11 @@ impl CommentStore {
     /// Only this app reads it; the notes file format stays untouched.
     pub fn pending_file(&self) -> PathBuf {
         sidecar(&self.video, ".comments.pending.json")
+    }
+
+    /// Where an unparsable [`Self::pending_file`] is moved, so it is never deleted.
+    pub fn bad_pending_file(&self) -> PathBuf {
+        sidecar(&self.video, ".comments.pending.json.bad")
     }
 
     pub fn read_only(&self) -> bool {
@@ -366,7 +381,9 @@ impl CommentStore {
             pending.clear();
         }
         let file = self.pending_file();
-        let kept = if pending.is_empty() {
+        let kept = if self.pending_locked {
+            Ok(())
+        } else if pending.is_empty() {
             match std::fs::remove_file(&file) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
                 _ => Ok(()),
@@ -377,9 +394,28 @@ impl CommentStore {
         result.and(kept.map_err(|e| trf("error.save", &[("err", &e)])))
     }
 
-    /// Changes a previous session could not write (see [`Self::flush`]).
-    pub fn load_pending(&self) -> Vec<Change> {
-        std::fs::read(self.pending_file()).ok().and_then(|raw| serde_json::from_slice(&raw).ok()).unwrap_or_default()
+    /// Changes a previous session could not write (see [`Self::flush`]). A file that
+    /// can't be parsed (truncated, or written by another build) is moved to
+    /// [`Self::bad_pending_file`] and reported, never dropped; if it can't be moved,
+    /// this store leaves the pending file alone from then on.
+    pub fn load_pending(&mut self) -> Result<Vec<Change>, String> {
+        let file = self.pending_file();
+        let why = match std::fs::read(&file) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => e.to_string(),
+            Ok(raw) => match serde_json::from_slice(&raw) {
+                Ok(list) => return Ok(list),
+                Err(e) => e.to_string(),
+            },
+        };
+        let kept = if !self.bad_pending_file().exists() && std::fs::rename(&file, self.bad_pending_file()).is_ok() {
+            self.bad_pending_file()
+        } else {
+            self.pending_locked = true;
+            file
+        };
+        let name = kept.file_name().unwrap_or_default().to_string_lossy();
+        Err(trf("error.pending_unreadable", &[("name", &name), ("err", &why)]))
     }
 
     /// Until the real frame rate is known, the file's `fps` (and the frame numbers
@@ -845,7 +881,7 @@ mod tests {
 
         // Switch away and back (or quit and reopen): a new store finds them.
         let mut store = CommentStore::new(&video);
-        let mut pending = store.load_pending();
+        let mut pending = store.load_pending().unwrap();
         assert_eq!(pending.len(), 1, "kept on disk");
         std::fs::write(store.file(), r#"{"comments": [{"t_in": 1.0, "text": "fixed", "id": "f"}]}"#).unwrap();
         let mut list = store.load().unwrap();
@@ -1000,6 +1036,34 @@ mod tests {
         }
         let ids: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, ["b", "c", "a"], "a new or moved note goes in by time, like save() orders it");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn unparsable_pending_file_is_kept_aside() {
+        let (dir, video) = temp_video();
+        let garbage = br#"[{"Put": {"t_in": "#;
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.pending_file(), garbage).unwrap();
+        let err = store.load_pending().unwrap_err();
+        assert!(err.contains("a.mp4.comments.pending.json.bad"), "{err}");
+        assert_eq!(std::fs::read(store.bad_pending_file()).unwrap(), garbage);
+
+        // A later edit writes and clears its own pending state; the moved file stays.
+        let mut list = store.load().unwrap();
+        let mut pending = vec![Change::Put(note("x", 2.0))];
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
+        assert!(!store.pending_file().exists());
+        assert_eq!(std::fs::read(store.bad_pending_file()).unwrap(), garbage);
+
+        // A second bad file can't be moved over the first one, so it is left untouched.
+        let mut store = CommentStore::new(&video);
+        std::fs::write(store.pending_file(), b"nope").unwrap();
+        assert!(!store.load_pending().unwrap_err().contains(".bad"));
+        let mut pending = vec![Change::Put(note("y", 3.0))];
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
+        assert_eq!(std::fs::read(store.pending_file()).unwrap(), b"nope");
+        assert_eq!(std::fs::read(store.bad_pending_file()).unwrap(), garbage);
         std::fs::remove_dir_all(dir).ok();
     }
 

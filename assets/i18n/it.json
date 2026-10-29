@@ -132,6 +132,7 @@
   "error.open_video": "Impossibile aprire il video ({name}): {why}",
   "error.no_video": "Nessun video trovato nella posizione indicata.",
   "error.notes_unreadable": "Il file delle note è illeggibile e non verrà sovrascritto ({name}): {err}",
+  "error.pending_unreadable": "Le modifiche non salvate di una sessione precedente sono illeggibili e sono state conservate come {name}: {err}",
   "error.save": "Salvataggio non riuscito: {err}",
   "error.notes_broken": "il file delle note è danneggiato e non verrà sovrascritto",
   "error.note_deleted_elsewhere": "Nel frattempo la nota è stata eliminata altrove, quindi questa modifica non è stata salvata.",
