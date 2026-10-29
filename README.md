@@ -50,6 +50,19 @@ scene detection; if it is missing, the app still runs and shows a warning.
 With no arguments it reopens the last folder/video (`~/Library/Application Support/video-review/prefs.json`).
 Press `?` in the app for the shortcuts.
 
+## Releases
+
+Changes are listed in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format). To cut a release:
+
+1. Bump `version` in `Cargo.toml` (and run `cargo check` so `Cargo.lock` follows).
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and start a new empty
+   `## [Unreleased]` above it.
+3. Commit, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The tag triggers `.github/workflows/release.yml`: it checks that the tag matches `Cargo.toml`,
+builds the DMG with `tools/make-dmg.sh` and publishes it as a GitHub Release, with the `[X.Y.Z]`
+section of the changelog as the notes. The DMG is unsigned, as above.
+
 ## Languages
 
 The UI comes in 12 languages: English, Magyar, Deutsch, Français, Español, Italiano, Português,

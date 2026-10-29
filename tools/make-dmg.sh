@@ -73,7 +73,8 @@ trap 'hdiutil detach "$DEVICE" >/dev/null 2>&1 || true' EXIT
 
 # Have Finder store the window layout and icon positions in .DS_Store. The volume
 # is addressed by path, not by name, so a same-named volume is never touched.
-osascript >/dev/null <<EOF
+# Non-fatal: without Finder access (e.g. a headless CI runner) the dmg just keeps the default layout.
+osascript >/dev/null <<EOF || echo "warning: could not arrange the dmg window with Finder" >&2
 tell application "Finder"
     set d to item (POSIX file "$MOUNT" as alias)
     open d
