@@ -173,9 +173,41 @@ fn sidecar(video: &Path, suffix: &str) -> PathBuf {
 /// Writes `bytes` to a `.tmp` sidecar and renames it over `path`, so a crash mid-write
 /// never leaves a truncated file for this or the other app versions to read.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = sidecar(path, ".tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    let (target, tmp) = write_tmp(path, bytes)?;
+    replace_with(&tmp, &target)
+}
+
+/// First half of [`write_atomic`]: writes `bytes` to a synced `.tmp` sidecar of the
+/// file `path` points to (a symlink is followed, so the rename keeps the link), with
+/// that file's permissions. Returns the real target and the sidecar.
+fn write_tmp(path: &Path, bytes: &[u8]) -> std::io::Result<(PathBuf, PathBuf)> {
+    use std::io::Write;
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let tmp = sidecar(&target, ".tmp");
+    let written = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        if let Ok(meta) = std::fs::metadata(&target) {
+            f.set_permissions(meta.permissions())?;
+        }
+        // On disk before the rename, so a power loss can't leave an empty file in its place.
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        std::fs::remove_file(&tmp).ok();
+        return Err(e);
+    }
+    Ok((target, tmp))
+}
+
+/// Second half of [`write_atomic`]: renames `tmp` over `target`, then syncs the folder
+/// so the rename itself survives a power loss (best effort: not every system allows it).
+fn replace_with(tmp: &Path, target: &Path) -> std::io::Result<()> {
+    std::fs::rename(tmp, target)?;
+    if let Some(dir) = target.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::File::open(dir).and_then(|d| d.sync_all()).ok();
+    }
+    Ok(())
 }
 
 /// One edit to the notes, keyed by id, so it can be applied again on top of
@@ -530,8 +562,7 @@ impl CommentStore {
         self.needs_backup = false;
         let bytes = serde_json::to_string_pretty(&payload)?.into_bytes();
         // As write_atomic, with a last look at the file between the write and the rename.
-        let tmp = sidecar(&file, ".tmp");
-        std::fs::write(&tmp, &bytes)?;
+        let (target, tmp) = write_tmp(&file, &bytes)?;
         #[cfg(test)]
         if let Some(hook) = self.before_rename.as_mut() {
             hook();
@@ -540,7 +571,7 @@ impl CommentStore {
             std::fs::remove_file(&tmp).ok();
             return Ok(false);
         }
-        std::fs::rename(&tmp, &file)?;
+        replace_with(&tmp, &target)?;
         // What we wrote, not a re-read: a write landing right after the rename still counts as outside.
         self.known = Some(bytes);
         self.file_fps = Some(fps);
@@ -1134,6 +1165,26 @@ mod tests {
         let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
         assert_eq!(ids, ["a", "b", "c"]);
         assert_eq!(list.len(), 3);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_keeps_a_symlinked_file_and_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, video) = temp_video();
+        let real = dir.join("shared.json");
+        let mut store = CommentStore::new(&video);
+        store.save(&mut [note("a", 1.0)], Fps::Known(24.0)).unwrap();
+        std::fs::rename(store.file(), &real).unwrap();
+        std::os::unix::fs::symlink(&real, store.file()).unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+        store.save(&mut [note("a", 1.0), note("b", 2.0)], Fps::Known(24.0)).unwrap();
+        assert!(std::fs::symlink_metadata(store.file()).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o640);
+        assert_eq!(store.load().unwrap().len(), 2);
+        assert!(!sidecar(&store.file(), ".tmp").exists() && !sidecar(&real, ".tmp").exists());
         std::fs::remove_dir_all(dir).ok();
     }
 
