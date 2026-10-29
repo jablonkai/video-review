@@ -260,7 +260,13 @@ pub struct CommentStore {
     pending_locked: bool,
     /// The changes left over by the last [`Self::flush`] are on disk (or there were none).
     pending_on_disk: bool,
+    /// A poll found the file gone; the next one decides whether it really is (see [`Self::gone_briefly`]).
+    vanished: bool,
 }
+
+/// [`CommentStore::commit`]'s error while the notes file is missing but not yet
+/// known to be gone: the changes wait, the poll retries, nothing is shown.
+pub const NOTES_MISSING: &str = "notes file missing";
 
 /// The frame rate a save writes, with how sure the player is about it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -282,6 +288,7 @@ impl CommentStore {
             extra: JsonMap::new(),
             pending_locked: false,
             pending_on_disk: true,
+            vanished: false,
         }
     }
 
@@ -310,6 +317,20 @@ impl CommentStore {
 
     fn current(&self) -> Option<Vec<u8>> {
         std::fs::read(self.file()).ok()
+    }
+
+    /// The file was there at the last read or write and is missing now: a sync
+    /// tool or another app may be replacing it by deleting and recreating it.
+    fn went_missing(&self) -> bool {
+        self.known.is_some() && matches!(std::fs::metadata(self.file()), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+    }
+
+    /// For the external-change poll: true on the first poll that finds the file
+    /// gone, so the notes in memory are not replaced by an empty list yet. If it
+    /// is still missing at the next poll, this returns false and a load accepts it.
+    pub fn gone_briefly(&mut self) -> bool {
+        self.vanished = self.went_missing() && !self.vanished;
+        self.vanished
     }
 
     /// A missing file is an empty list; a file that can't be read or parsed is
@@ -365,7 +386,12 @@ impl CommentStore {
     /// Writes `changes` (already applied to `comments`) to disk. If the file
     /// changed on disk or was unreadable, it is read again first and the
     /// changes are applied on top, so an outside edit is not lost.
+    /// While the file is missing but not yet known to be gone ([`Self::gone_briefly`])
+    /// nothing is written and [`NOTES_MISSING`] is returned.
     pub fn commit(&mut self, comments: &mut Vec<Comment>, changes: &[Change], fps: Fps) -> Result<(), String> {
+        if self.went_missing() {
+            return Err(NOTES_MISSING.to_owned());
+        }
         if self.read_only || self.changed_externally() {
             let mut fresh = self.load()?;
             for ch in changes {
@@ -875,6 +901,39 @@ mod tests {
         let mut store = CommentStore::new(&video);
         assert!(store.load().unwrap().is_empty());
         assert!(!store.read_only());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn briefly_missing_file_holds_back_writes_until_the_next_poll() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+        let saved = std::fs::read(store.file()).unwrap();
+
+        // Deleted and recreated by a sync tool: the poll waits and nothing is written meanwhile.
+        std::fs::remove_file(store.file()).unwrap();
+        let ch = Change::Put(note("b", 2.0));
+        ch.apply(&mut list);
+        let mut pending = vec![ch];
+        assert_eq!(store.flush(&mut list, &mut pending, Fps::Known(24.0)), Err(NOTES_MISSING.to_owned()));
+        assert!(!store.file().exists());
+        assert_eq!(pending.len(), 1);
+        assert!(store.gone_briefly());
+        std::fs::write(store.file(), &saved).unwrap();
+        assert!(!store.gone_briefly());
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
+        assert_eq!(store.load().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+
+        // Still missing at the next poll: really gone, so it loads as empty and writes go through.
+        std::fs::remove_file(store.file()).unwrap();
+        assert!(store.gone_briefly());
+        assert!(!store.gone_briefly());
+        assert!(store.load().unwrap().is_empty());
+        let mut list = vec![note("c", 3.0)];
+        store.commit(&mut list, &[Change::Put(note("c", 3.0))], Fps::Known(24.0)).unwrap();
+        assert!(store.file().exists());
         std::fs::remove_dir_all(dir).ok();
     }
 

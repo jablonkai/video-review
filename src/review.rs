@@ -337,8 +337,10 @@ impl Review {
         if self.last_check.elapsed() > Duration::from_secs(4) {
             self.last_check = Instant::now();
             // An unreadable file is tried again on every poll until it parses, and
-            // pending changes until they are written.
-            if self.store.as_ref().is_some_and(|s| s.read_only() || s.changed_externally()) || !self.pending.is_empty() {
+            // pending changes until they are written. A file that just went missing
+            // keeps the notes (and holds back writes) until the next poll.
+            let gone = self.store.as_mut().is_some_and(|s| s.gone_briefly());
+            if !gone && (self.store.as_ref().is_some_and(|s| s.read_only() || s.changed_externally()) || !self.pending.is_empty()) {
                 self.reload();
             }
         }
@@ -890,8 +892,11 @@ impl Review {
     fn flush(&mut self) {
         let fps = self.fps_now();
         let Some(store) = &mut self.store else { return };
-        // Kept in `pending` (and its file) while the notes file is unreadable; the poll retries.
-        if let Err(e) = store.flush(&mut self.comments, &mut self.pending, fps) {
+        // Kept in `pending` (and its file) while the notes file is unreadable or
+        // briefly missing; the poll retries.
+        if let Err(e) = store.flush(&mut self.comments, &mut self.pending, fps)
+            && e != model::NOTES_MISSING
+        {
             self.error = Some(e);
         }
     }
