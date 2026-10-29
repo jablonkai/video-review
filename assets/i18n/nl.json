@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Niet-opgeslagen wijzigingen uit een eerdere sessie zijn onleesbaar en bewaard als {name}: {err}",
   "error.save": "Opslaan mislukt: {err}",
   "error.notes_broken": "het notitiebestand is beschadigd en wordt niet overschreven",
+  "error.notes_busy": "het notitiebestand bleef tijdens het opslaan veranderen en is daarom niet overschreven",
   "error.note_deleted_elsewhere": "De notitie is intussen elders verwijderd, dus deze wijziging is niet opgeslagen.",
   "error.unsaved_on_quit": "Sommige wijzigingen konden nergens worden opgeslagen. Sluit opnieuw om ze te verwerpen.",
   "error.ffmpeg_missing": "ffmpeg niet gevonden",

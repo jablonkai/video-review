@@ -262,7 +262,15 @@ pub struct CommentStore {
     pending_on_disk: bool,
     /// A poll found the file gone; the next one decides whether it really is (see [`Self::gone_briefly`]).
     vanished: bool,
+    /// Runs between writing the `.tmp` sidecar and the last check before the rename,
+    /// so tests can land an outside write in that window.
+    #[cfg(test)]
+    before_rename: Option<Box<dyn FnMut() + Send>>,
 }
+
+/// How often [`CommentStore::commit`] re-reads and re-applies when the file keeps
+/// changing under the save, before it gives up (the changes stay pending).
+const SAVE_TRIES: usize = 3;
 
 /// [`CommentStore::commit`]'s error while the notes file is missing but not yet
 /// known to be gone: the changes wait, the poll retries, nothing is shown.
@@ -289,6 +297,8 @@ impl CommentStore {
             pending_locked: false,
             pending_on_disk: true,
             vanished: false,
+            #[cfg(test)]
+            before_rename: None,
         }
     }
 
@@ -388,18 +398,25 @@ impl CommentStore {
     /// changes are applied on top, so an outside edit is not lost.
     /// While the file is missing but not yet known to be gone ([`Self::gone_briefly`])
     /// nothing is written and [`NOTES_MISSING`] is returned.
+    /// The file is checked once more right before the rename; a write landing
+    /// in between is merged the same way, up to [`SAVE_TRIES`] times.
     pub fn commit(&mut self, comments: &mut Vec<Comment>, changes: &[Change], fps: Fps) -> Result<(), String> {
-        if self.went_missing() {
-            return Err(NOTES_MISSING.to_owned());
-        }
-        if self.read_only || self.changed_externally() {
-            let mut fresh = self.load()?;
-            for ch in changes {
-                ch.apply(&mut fresh);
+        for _ in 0..SAVE_TRIES {
+            if self.went_missing() {
+                return Err(NOTES_MISSING.to_owned());
             }
-            *comments = fresh;
+            if self.read_only || self.changed_externally() {
+                let mut fresh = self.load()?;
+                for ch in changes {
+                    ch.apply(&mut fresh);
+                }
+                *comments = fresh;
+            }
+            if self.write(comments, fps, true).map_err(|e| trf("error.save", &[("err", &e)]))? {
+                return Ok(());
+            }
         }
-        self.save(comments, fps).map_err(|e| trf("error.save", &[("err", &e)]))
+        Err(trf("error.save", &[("err", &tr("error.notes_busy"))]))
     }
 
     /// Commits `pending`, clearing it on success. Whatever is left is written to
@@ -454,9 +471,17 @@ impl CommentStore {
         Err(trf("error.pending_unreadable", &[("name", &name), ("err", &why)]))
     }
 
+    /// Writes without the last check, as another app would (tests stand in for one with it).
+    #[cfg(test)]
+    pub fn save(&mut self, comments: &mut [Comment], fps: Fps) -> std::io::Result<()> {
+        self.write(comments, fps, false).map(|_| ())
+    }
+
     /// Until the real frame rate is known, the file's `fps` (and the frame numbers
     /// from it) is kept, so values written by the other versions aren't replaced by a guess.
-    pub fn save(&mut self, comments: &mut [Comment], fps: Fps) -> std::io::Result<()> {
+    /// With `checked`, nothing is written (`Ok(false)`) if the file no longer
+    /// matches `known` right before the rename.
+    fn write(&mut self, comments: &mut [Comment], fps: Fps, checked: bool) -> std::io::Result<bool> {
         if self.read_only {
             return Err(std::io::Error::other(tr("error.notes_broken")));
         }
@@ -493,11 +518,22 @@ impl CommentStore {
         }
         self.needs_backup = false;
         let bytes = serde_json::to_string_pretty(&payload)?.into_bytes();
-        write_atomic(&file, &bytes)?;
+        // As write_atomic, with a last look at the file between the write and the rename.
+        let tmp = sidecar(&file, ".tmp");
+        std::fs::write(&tmp, &bytes)?;
+        #[cfg(test)]
+        if let Some(hook) = self.before_rename.as_mut() {
+            hook();
+        }
+        if checked && self.changed_externally() {
+            std::fs::remove_file(&tmp).ok();
+            return Ok(false);
+        }
+        std::fs::rename(&tmp, &file)?;
         // What we wrote, not a re-read: a write landing right after the rename still counts as outside.
         self.known = Some(bytes);
         self.file_fps = Some(fps);
-        Ok(())
+        Ok(true)
     }
 
     /// True when someone else (another app, Claude, the web version) changed the file.
@@ -1065,6 +1101,52 @@ mod tests {
         let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
         assert_eq!(ids, ["a", "b", "c"]);
         assert!(!store.changed_externally());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn outside_edit_during_a_save_is_merged() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+
+        // Another app writes after the change check, before our rename (once).
+        let mut once = Some(video.clone());
+        store.before_rename = Some(Box::new(move || {
+            if let Some(v) = once.take() {
+                CommentStore::new(&v).save(&mut [note("a", 1.0), note("c", 3.0)], Fps::Known(24.0)).unwrap();
+            }
+        }));
+        let ch = Change::Put(note("b", 2.0));
+        ch.apply(&mut list);
+        store.commit(&mut list, &[ch], Fps::Known(24.0)).unwrap();
+        assert!(!sidecar(&store.file(), ".tmp").exists());
+        let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+        assert_eq!(list.len(), 3);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_file_that_keeps_changing_is_never_overwritten() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        store.save(&mut [note("a", 1.0)], Fps::Known(24.0)).unwrap();
+
+        let mut n = 0;
+        let v = video.clone();
+        store.before_rename = Some(Box::new(move || {
+            n += 1;
+            CommentStore::new(&v).save(&mut [note("a", 1.0), note(&format!("x{n}"), 3.0)], Fps::Known(24.0)).unwrap();
+        }));
+        let mut list = store.load().unwrap();
+        let ch = Change::Put(note("b", 2.0));
+        ch.apply(&mut list);
+        assert!(store.commit(&mut list, &[ch], Fps::Known(24.0)).is_err());
+        // The last outside write stands untouched; the change is left to the caller to retry.
+        let ids: Vec<_> = store.load().unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["a".to_string(), format!("x{SAVE_TRIES}")]);
         std::fs::remove_dir_all(dir).ok();
     }
 

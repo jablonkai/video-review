@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Ungespeicherte Änderungen einer früheren Sitzung sind unlesbar und wurden als {name} aufbewahrt: {err}",
   "error.save": "Speichern fehlgeschlagen: {err}",
   "error.notes_broken": "die Notizdatei ist beschädigt und wird nicht überschrieben",
+  "error.notes_busy": "die Notizdatei hat sich beim Speichern ständig geändert und wurde daher nicht überschrieben",
   "error.note_deleted_elsewhere": "Die Notiz wurde inzwischen anderswo gelöscht, daher wurde diese Änderung nicht gespeichert.",
   "error.unsaved_on_quit": "Einige Änderungen konnten nirgends gespeichert werden. Erneut schließen, um sie zu verwerfen.",
   "error.ffmpeg_missing": "ffmpeg nicht gefunden",

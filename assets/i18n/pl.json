@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Niezapisane zmiany z poprzedniej sesji są nieczytelne i zostały zachowane jako {name}: {err}",
   "error.save": "Nie można zapisać: {err}",
   "error.notes_broken": "plik notatek jest uszkodzony i nie zostanie nadpisany",
+  "error.notes_busy": "plik notatek zmieniał się podczas zapisywania, więc nie został nadpisany",
   "error.note_deleted_elsewhere": "Notatka została w międzyczasie usunięta gdzie indziej, więc ta zmiana nie została zapisana.",
   "error.unsaved_on_quit": "Niektórych zmian nie udało się nigdzie zapisać. Zamknij ponownie, aby je odrzucić.",
   "error.ffmpeg_missing": "nie znaleziono ffmpeg",

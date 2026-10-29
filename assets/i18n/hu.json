@@ -138,6 +138,7 @@
   "error.pending_unreadable": "Egy korábbi munkamenet mentetlen módosításai nem olvashatók; a fájl {name} néven megmaradt: {err}",
   "error.save": "A mentés nem sikerült: {err}",
   "error.notes_broken": "a jegyzetfájl sérült, és nem lesz felülírva",
+  "error.notes_busy": "a jegyzetfájl mentés közben folyamatosan változott, ezért nem lett felülírva",
   "error.note_deleted_elsewhere": "A jegyzetet közben máshol törölték, ezért ez a módosítás nem lett mentve.",
   "error.unsaved_on_quit": "Néhány változtatást sehova sem sikerült menteni. Zárd be újra, ha elveted őket.",
   "error.ffmpeg_missing": "az ffmpeg nem található",
