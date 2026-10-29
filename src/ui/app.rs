@@ -14,6 +14,10 @@ use crate::ui::panel::{self, PanelState, icon_button};
 use crate::ui::stage::{StageDrag, stage};
 use crate::ui::timeline::{RulerDrag, filmstrip, ruler};
 
+/// Shortcuts that toggle or act once: holding the key fires them once, not on every
+/// auto-repeat. The stepping keys (arrows, J, N, P) keep repeating.
+const ONE_SHOT_KEYS: [Key; 9] = [Key::Space, Key::K, Key::L, Key::I, Key::O, Key::S, Key::M, Key::Enter, Key::Escape];
+
 pub struct App {
     r: Review,
     panel: PanelState,
@@ -90,16 +94,20 @@ impl App {
         for e in events {
             match e {
                 egui::Event::Text(t) if t == "?" => self.help = !self.help,
-                egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                egui::Event::Key { key, pressed: true, repeat, modifiers, .. } => {
                     if key == Key::Z && modifiers.command && !modifiers.shift && !modifiers.alt && !self.help {
-                        self.r.undo();
+                        if !repeat {
+                            self.r.undo();
+                        }
                         continue;
                     }
                     if modifiers.command || modifiers.ctrl || modifiers.alt {
                         continue;
                     }
                     if key == Key::F1 {
-                        self.help = !self.help;
+                        if !repeat {
+                            self.help = !self.help;
+                        }
                         continue;
                     }
                     if self.help {
@@ -111,14 +119,19 @@ impl App {
                     if self.r.current.is_none() {
                         continue;
                     }
-                    self.key(ctx, key, modifiers.shift);
+                    self.key(ctx, key, modifiers.shift, repeat);
                 }
                 _ => {}
             }
         }
     }
 
-    fn key(&mut self, ctx: &egui::Context, key: Key, shift: bool) {
+    fn key(&mut self, ctx: &egui::Context, key: Key, shift: bool, repeat: bool) {
+        if repeat && ONE_SHOT_KEYS.contains(&key) {
+            // Fire once per press, but still swallow the repeats so egui doesn't act on them.
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+            return;
+        }
         let r = &mut self.r;
         let t = r.position();
         match key {
