@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "next or previous note",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "undo the last delete or done mark",
+  "help.undo.d": "undo the last note change",
   "help.mark.k": "mark on the ruler",
   "help.mark.d": "opens it; overlapping ones cycle per click",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Marked done",
   "undo.reopened": "Reopened",
   "undo.deleted": "Note deleted",
+  "undo.added": "Note added",
+  "undo.edited": "Note edited",
   "ruler.stack": { "one": "{n} note here — click to cycle", "other": "{n} notes here — click to cycle" },
   "mark.new": "new",
 

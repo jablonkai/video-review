@@ -82,7 +82,7 @@
   "help.np.k": "N、P",
   "help.np.d": "下一条或上一条批注",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "撤销上一次删除或完成标记",
+  "help.undo.d": "撤销上一次批注更改",
   "help.mark.k": "标尺上的标记",
   "help.mark.d": "打开批注；重叠的标记每次点击轮换",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "已标记为完成",
   "undo.reopened": "已重新打开",
   "undo.deleted": "批注已删除",
+  "undo.added": "批注已添加",
+  "undo.edited": "批注已编辑",
   "ruler.stack": { "other": "此处有 {n} 条批注 — 点击轮换" },
   "mark.new": "新",
 

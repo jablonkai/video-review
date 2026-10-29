@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "volgende of vorige notitie",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "laatste verwijdering of klaar-markering ongedaan maken",
+  "help.undo.d": "laatste wijziging aan notities ongedaan maken",
   "help.mark.k": "markering op de liniaal",
   "help.mark.d": "opent de notitie; overlappende wisselen per klik",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Als klaar gemarkeerd",
   "undo.reopened": "Heropend",
   "undo.deleted": "Notitie verwijderd",
+  "undo.added": "Notitie toegevoegd",
+  "undo.edited": "Notitie bewerkt",
   "ruler.stack": { "one": "{n} notitie hier — klik om te wisselen", "other": "{n} notities hier — klik om te wisselen" },
   "mark.new": "nieuw",
 

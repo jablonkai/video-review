@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "note suivante ou précédente",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "annuler la dernière suppression ou marque « fait »",
+  "help.undo.d": "annuler la dernière modification des notes",
   "help.mark.k": "marque sur la règle",
   "help.mark.d": "l'ouvre ; celles qui se chevauchent défilent à chaque clic",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Marquée comme faite",
   "undo.reopened": "Rouverte",
   "undo.deleted": "Note supprimée",
+  "undo.added": "Note ajoutée",
+  "undo.edited": "Note modifiée",
   "ruler.stack": { "one": "{n} note ici — cliquez pour faire défiler", "other": "{n} notes ici — cliquez pour faire défiler" },
   "mark.new": "nouveau",
 

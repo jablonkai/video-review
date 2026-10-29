@@ -82,7 +82,7 @@
   "help.np.k": "N, P",
   "help.np.d": "nota siguiente o anterior",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "deshacer el último borrado o marca de hecho",
+  "help.undo.d": "deshacer el último cambio en las notas",
   "help.mark.k": "marca en la regla",
   "help.mark.d": "la abre; las superpuestas rotan con cada clic",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "Marcada como hecha",
   "undo.reopened": "Reabierta",
   "undo.deleted": "Nota borrada",
+  "undo.added": "Nota añadida",
+  "undo.edited": "Nota editada",
   "ruler.stack": { "one": "{n} nota aquí — clic para rotar", "other": "{n} notas aquí — clic para rotar" },
   "mark.new": "nueva",
 

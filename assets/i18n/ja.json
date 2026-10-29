@@ -82,7 +82,7 @@
   "help.np.k": "N、P",
   "help.np.d": "次／前のノート",
   "help.undo.k": "Cmd + Z",
-  "help.undo.d": "直前の削除または完了マークを取り消す",
+  "help.undo.d": "直前のノートの変更を取り消す",
   "help.mark.k": "ルーラー上のマーク",
   "help.mark.d": "ノートを開く。重なっているものはクリックごとに切り替え",
 
@@ -127,6 +127,8 @@
   "undo.marked_done": "完了にしました",
   "undo.reopened": "再開しました",
   "undo.deleted": "ノートを削除しました",
+  "undo.added": "ノートを追加しました",
+  "undo.edited": "ノートを編集しました",
   "ruler.stack": { "other": "ここに {n} 件のノート — クリックで切り替え" },
   "mark.new": "新規",
 
