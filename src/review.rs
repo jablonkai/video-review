@@ -762,6 +762,7 @@ impl Review {
             done: false,
             created: Some(chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()),
             general,
+            extra: Default::default(),
         };
         // `whole_video` stays on, so several general notes can be written in a row.
         self.focus_id = Some(c.id.clone());
@@ -1016,6 +1017,7 @@ mod tests {
             done: false,
             created: None,
             general: false,
+            extra: Default::default(),
         };
         assert!(is_active(&moment, 2.0, fps));
         assert!(is_active(&moment, 2.039, fps));
