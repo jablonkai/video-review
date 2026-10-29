@@ -235,7 +235,8 @@ fn prune(root: &Path, limit: u64, active: &Mutex<Option<PathBuf>>) {
             Some((e.path(), size, meta.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
         })
         .collect();
-    for dir in to_prune(dirs, limit) {
+    let snapshot = active.lock().unwrap().clone();
+    for dir in to_prune(dirs, limit, snapshot.as_deref()) {
         // Held during the delete: the open video can't claim this folder halfway through.
         let active = active.lock().unwrap();
         if active.as_deref() != Some(dir.as_path()) {
@@ -245,13 +246,17 @@ fn prune(root: &Path, limit: u64, active: &Mutex<Option<PathBuf>>) {
 }
 
 /// From `(dir, size, last used)` entries, the oldest ones to drop so the total is at most `limit`.
-fn to_prune(mut dirs: Vec<(PathBuf, u64, SystemTime)>, limit: u64) -> Vec<PathBuf> {
+/// `active` still counts toward the total but is never picked, since `prune` won't delete it.
+fn to_prune(mut dirs: Vec<(PathBuf, u64, SystemTime)>, limit: u64, active: Option<&Path>) -> Vec<PathBuf> {
     let mut total: u64 = dirs.iter().map(|d| d.1).sum();
     dirs.sort_by_key(|d| d.2);
     let mut out = Vec::new();
     for (path, size, _) in dirs {
         if total <= limit {
             break;
+        }
+        if active == Some(path.as_path()) {
+            continue;
         }
         total -= size;
         out.push(path);
@@ -277,16 +282,26 @@ mod tests {
 
     #[test]
     fn under_limit_keeps_all() {
-        assert!(to_prune(vec![entry("a", 10, 1), entry("b", 20, 2)], 30).is_empty());
-        assert!(to_prune(Vec::new(), 0).is_empty());
+        assert!(to_prune(vec![entry("a", 10, 1), entry("b", 20, 2)], 30, None).is_empty());
+        assert!(to_prune(Vec::new(), 0, None).is_empty());
     }
 
     #[test]
     fn drops_oldest_first_until_under_limit() {
         let dirs = vec![entry("new", 50, 30), entry("old", 40, 10), entry("mid", 30, 20)];
-        assert_eq!(to_prune(dirs.clone(), 100), vec![PathBuf::from("old")]);
-        assert_eq!(to_prune(dirs.clone(), 50), vec![PathBuf::from("old"), PathBuf::from("mid")]);
-        assert_eq!(to_prune(dirs, 0).len(), 3);
+        assert_eq!(to_prune(dirs.clone(), 100, None), vec![PathBuf::from("old")]);
+        assert_eq!(to_prune(dirs.clone(), 50, None), vec![PathBuf::from("old"), PathBuf::from("mid")]);
+        assert_eq!(to_prune(dirs, 0, None).len(), 3);
+    }
+
+    #[test]
+    fn active_dir_is_kept_and_not_counted_as_freed() {
+        let dirs = vec![entry("new", 50, 30), entry("old", 40, 10), entry("mid", 30, 20)];
+        // "old" stays, so freeing 30 more bytes needs "mid" and then "new".
+        let active = Some(Path::new("old"));
+        assert_eq!(to_prune(dirs.clone(), 100, active), vec![PathBuf::from("mid")]);
+        assert_eq!(to_prune(dirs.clone(), 50, active), vec![PathBuf::from("mid"), PathBuf::from("new")]);
+        assert_eq!(to_prune(dirs, 0, active).len(), 2);
     }
 
     #[test]
