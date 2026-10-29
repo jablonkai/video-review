@@ -5,6 +5,7 @@
   "export.unknown_format": "Formato di esportazione sconosciuto – usa una di queste estensioni: {exts}",
   "export.failed": "Esportazione non riuscita ({path}): {err}",
   "export.edl_capped": { "one": "Un EDL contiene al massimo {max} marker: sono state esportate solo le prime {max} di {n} nota. Usa FCPXML o Markdown per esportarle tutte.", "other": "Un EDL contiene al massimo {max} marker: sono state esportate solo le prime {max} di {n} note. Usa FCPXML o Markdown per esportarle tutte." },
+  "export.odd_rate": "Esportato, ma {fps} fps è lontano da ogni frequenza fotogrammi standard: Final Cut Pro potrebbe rifiutare il file o posizionare male i marker.",
 
   "header.pick_video": "Un altro video di questa cartella",
   "header.fps": "{fps} fps",

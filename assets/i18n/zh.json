@@ -5,6 +5,7 @@
   "export.unknown_format": "未知的导出格式 – 请使用以下扩展名之一：{exts}",
   "export.failed": "导出失败（{path}）：{err}",
   "export.edl_capped": { "other": "EDL 最多只能容纳 {max} 个标记：{n} 条批注中只导出了前 {max} 条。要全部导出，请使用 FCPXML 或 Markdown。" },
+  "export.odd_rate": "已导出，但 {fps} fps 与所有标准帧率相差较大：Final Cut Pro 可能拒绝该文件或错放标记。",
 
   "header.pick_video": "此文件夹中的另一个视频",
   "header.fps": "{fps} fps",

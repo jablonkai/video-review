@@ -71,17 +71,39 @@ fn frames(c: &Comment, fps: f64) -> (i64, i64) {
     (a, b)
 }
 
+/// Frame durations (numerator, denominator in seconds) of the rates Final Cut
+/// Pro offers: 23.976, 24, 25, 29.97, 30, 50, 59.94 and 60.
+const STANDARD_RATES: [(i64, i64); 8] = [(1001, 24000), (1, 24), (1, 25), (1001, 30000), (1, 30), (1, 50), (1001, 60000), (1, 60)];
+
+/// How far (relative) a reported rate may be from a standard one and still be
+/// snapped to it. Variable frame rate phone clips report averages like 29.87.
+const SNAP_TOLERANCE: f64 = 0.02;
+
 /// Frame duration as an exact rational (numerator, denominator) in seconds,
-/// so 23.976 becomes 1001/24000 instead of a rounded float.
-pub fn frame_duration(fps: f64) -> (i64, i64) {
+/// so 23.976 becomes 1001/24000 instead of a rounded float. Integer and NTSC
+/// rates are kept as they are; anything else is snapped to the nearest
+/// standard rate with the same nominal rate (so the FCPXML counts frames like
+/// the EDL and Markdown exports). `None` when no such rate is near.
+pub fn standard_frame_duration(fps: f64) -> Option<(i64, i64)> {
     let n = nominal(fps);
     if (fps - n as f64).abs() < 1e-3 {
-        (1, n)
-    } else if (fps - n as f64 * 1000.0 / 1001.0).abs() < 1e-2 {
-        (1001, n * 1000)
-    } else {
-        (100, (fps * 100.0).round().max(1.0) as i64)
+        return Some((1, n));
     }
+    if (fps - n as f64 * 1000.0 / 1001.0).abs() < 1e-2 {
+        return Some((1001, n * 1000));
+    }
+    STANDARD_RATES
+        .into_iter()
+        .map(|(num, den)| (den as f64 / num as f64, (num, den)))
+        .filter(|&(rate, _)| nominal(rate) == n && ((fps - rate) / rate).abs() <= SNAP_TOLERANCE)
+        .min_by(|a, b| (fps - a.0).abs().total_cmp(&(fps - b.0).abs()))
+        .map(|(_, fd)| fd)
+}
+
+/// [`standard_frame_duration`], falling back to the rate rounded to 1/100 fps
+/// for rates far from every standard one (the export then warns about it).
+pub fn frame_duration(fps: f64) -> (i64, i64) {
+    standard_frame_duration(fps).unwrap_or_else(|| (100, (fps * 100.0).round().max(1.0) as i64))
 }
 
 fn rational(frames: i64, (num, den): (i64, i64)) -> String {
@@ -269,8 +291,24 @@ mod tests {
         assert_eq!(frame_duration(29.97), (1001, 30000));
         assert_eq!(frame_duration(59.94), (1001, 60000));
         assert_eq!(frame_duration(12.5), (100, 1250));
+        assert_eq!(standard_frame_duration(12.5), None);
+        assert_eq!(frame_duration(48.0), (1, 48));
         assert_eq!(rational(48, frame_duration(23.976)), "48048/24000s");
         assert_eq!(rational(0, (1, 25)), "0s");
+    }
+
+    #[test]
+    fn vfr_rates_snap_to_a_standard_rate() {
+        // Averages mpv reports for variable frame rate phone clips.
+        assert_eq!(frame_duration(29.87), (1001, 30000));
+        assert_eq!(frame_duration(30.2), (1, 30));
+        assert_eq!(frame_duration(24.3), (1, 24));
+        assert_eq!(frame_duration(59.5), (1001, 60000));
+        assert_eq!(frame_duration(25.4), (1, 25));
+        assert!(fcpxml(&[], &meta(29.87)).contains("frameDuration=\"1001/30000s\""));
+        // Snapping keeps the nominal rate the EDL and Markdown count at.
+        assert_eq!(standard_frame_duration(29.4), None);
+        assert_eq!(standard_frame_duration(40.3), None);
     }
 
     #[test]

@@ -82,6 +82,8 @@ impl App {
         } else if format == export::Format::Edl && self.r.comments.len() > export::EDL_MAX_EVENTS {
             let n = self.r.comments.len() as u64;
             self.r.error = Some(trn("export.edl_capped", n, &[("max", &export::EDL_MAX_EVENTS)]));
+        } else if format == export::Format::Fcpxml && export::standard_frame_duration(self.r.fps).is_none() {
+            self.r.error = Some(trf("export.odd_rate", &[("fps", &format!("{:.2}", self.r.fps))]));
         }
     }
 

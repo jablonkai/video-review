@@ -5,6 +5,7 @@
   "export.unknown_format": "Ismeretlen exportformátum – használd az egyik kiterjesztést: {exts}",
   "export.failed": "Az exportálás nem sikerült ({path}): {err}",
   "export.edl_capped": { "one": "Egy EDL legfeljebb {max} markert tartalmazhat: a(z) {n} jegyzetből csak az első {max} került exportálásra. Az összeshez használj FCPXML-t vagy Markdownt.", "other": "Egy EDL legfeljebb {max} markert tartalmazhat: a(z) {n} jegyzetből csak az első {max} került exportálásra. Az összeshez használj FCPXML-t vagy Markdownt." },
+  "export.odd_rate": "Az exportálás megtörtént, de a(z) {fps} fps messze van minden szabványos képkockasebességtől: a Final Cut Pro elutasíthatja a fájlt, vagy rossz helyre teheti a markereket.",
 
   "header.pick_video": "Másik videó ebből a mappából",
   "header.fps": "{fps} fps",
