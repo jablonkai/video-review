@@ -241,6 +241,17 @@ pub fn edits_lost(changes: &[Change], list: &[Comment]) -> bool {
     })
 }
 
+/// Re-applies the changes not written yet on top of a list freshly read from
+/// disk, as the poll does after the file changed elsewhere or became readable
+/// again. Also reports whether an edit hit a note deleted elsewhere.
+pub fn merge_reload(mut list: Vec<Comment>, pending: &[Change]) -> (Vec<Comment>, bool) {
+    for ch in pending {
+        ch.apply(&mut list);
+    }
+    let lost = edits_lost(pending, &list);
+    (list, lost)
+}
+
 /// Reads and writes `<video>.comments.json` next to the video.
 pub struct CommentStore {
     video: PathBuf,
@@ -1017,10 +1028,8 @@ mod tests {
         let mut pending = store.load_pending().unwrap();
         assert_eq!(pending.len(), 1, "kept on disk");
         std::fs::write(store.file(), r#"{"comments": [{"t_in": 1.0, "text": "fixed", "id": "f"}]}"#).unwrap();
-        let mut list = store.load().unwrap();
-        for ch in &pending {
-            ch.apply(&mut list);
-        }
+        let (mut list, lost) = merge_reload(store.load().unwrap(), &pending);
+        assert!(!lost);
         store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
         assert!(pending.is_empty());
         assert!(!store.pending_file().exists(), "removed once written");
@@ -1222,6 +1231,118 @@ mod tests {
         // An edit followed by a local delete of the same note is not a loss.
         let deleted = [Change::Text { id: "b".into(), text: "x".into() }, Change::Remove("b".into())];
         assert!(!edits_lost(&deleted, &[]));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn reload_reapplies_pending_on_an_outside_edit() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0), note("b", 2.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+        // The file goes bad, so edits made here wait in `pending`.
+        std::fs::write(store.file(), "{").unwrap();
+        assert!(store.load().is_err());
+        let mut pending = Vec::new();
+        for ch in [Change::Text { id: "a".into(), text: "ours".into() }, Change::Put(note("x", 1.5)), Change::Remove("b".into())] {
+            ch.apply(&mut list);
+            pending.push(ch);
+        }
+        assert!(store.flush(&mut list, &mut pending, Fps::Known(24.0)).is_err());
+
+        // Another app writes a fixed file that also changed "a" and added "c".
+        let mut theirs = vec![note("a", 1.0), note("b", 2.0), note("c", 3.0)];
+        theirs[0].done = true;
+        CommentStore::new(&video).save(&mut theirs, Fps::Known(24.0)).unwrap();
+        let (mut list, lost) = merge_reload(store.load().unwrap(), &pending);
+        assert!(!lost);
+        assert!(!store.read_only());
+        assert_eq!(list.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "x", "c"]);
+        assert_eq!(list[0].text, "ours", "our edit wins on the same note");
+        assert!(list[0].done, "their edit of another field is kept");
+        store.flush(&mut list, &mut pending, Fps::Known(24.0)).unwrap();
+        assert!(pending.is_empty());
+        assert_eq!(store.load().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "x", "c"]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn reload_reports_an_edit_of_a_note_deleted_elsewhere() {
+        let edits = [Change::Text { id: "a".into(), text: "ours".into() }, Change::Done { id: "b".into(), done: true }];
+        let (list, lost) = merge_reload(vec![note("b", 2.0)], &edits);
+        assert!(lost);
+        assert_eq!(list.len(), 1);
+        assert!(list[0].done);
+        let (_, lost) = merge_reload(vec![note("a", 1.0), note("b", 2.0)], &edits);
+        assert!(!lost);
+        // Deleted here too after the edit: not a loss.
+        let (list, lost) = merge_reload(vec![note("b", 2.0)], &[edits[0].clone(), Change::Remove("a".into())]);
+        assert!(!lost);
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn undo_of_a_delete_survives_an_outside_edit() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0), note("b", 2.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+        let original = list[0].clone();
+        let ch = Change::Remove("a".into());
+        ch.apply(&mut list);
+        store.commit(&mut list, &[ch], Fps::Known(24.0)).unwrap();
+
+        // Another app edits "b" and adds "c"; the poll reloads before the undo.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut theirs = vec![note("b", 2.0), note("c", 3.0)];
+        theirs[0].text = "edited elsewhere".into();
+        CommentStore::new(&video).save(&mut theirs, Fps::Known(24.0)).unwrap();
+        assert!(store.changed_externally());
+        let (mut list, _) = merge_reload(store.load().unwrap(), &[]);
+
+        let undo = Change::Put(original);
+        undo.apply(&mut list);
+        store.commit(&mut list, std::slice::from_ref(&undo), Fps::Known(24.0)).unwrap();
+        assert!(!edits_lost(&[undo], &list));
+        let back = store.load().unwrap();
+        assert_eq!(back.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "b", "c"]);
+        assert_eq!(back[0].text, "a");
+        assert_eq!(back[1].text, "edited elsewhere");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn undo_of_done_survives_an_outside_edit() {
+        let (dir, video) = temp_video();
+        let mut store = CommentStore::new(&video);
+        let mut list = vec![note("a", 1.0)];
+        store.save(&mut list, Fps::Known(24.0)).unwrap();
+        let ch = Change::Done { id: "a".into(), done: true };
+        ch.apply(&mut list);
+        store.commit(&mut list, &[ch], Fps::Known(24.0)).unwrap();
+
+        // Another app rewrites the text of "a" (keeping it done); not reloaded yet.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut theirs = store.load().unwrap();
+        theirs[0].text = "edited elsewhere".into();
+        CommentStore::new(&video).save(&mut theirs, Fps::Known(24.0)).unwrap();
+        assert!(store.changed_externally());
+
+        // The undo commits on top of their file, without losing their edit.
+        let undo = Change::Done { id: "a".into(), done: false };
+        undo.apply(&mut list);
+        store.commit(&mut list, std::slice::from_ref(&undo), Fps::Known(24.0)).unwrap();
+        assert!(!edits_lost(std::slice::from_ref(&undo), &list));
+        let back = store.load().unwrap();
+        assert!(!back[0].done);
+        assert_eq!(back[0].text, "edited elsewhere");
+        assert_eq!(list[0].text, "edited elsewhere", "the in-memory list picks it up too");
+
+        // Deleted elsewhere before the undo: the undo is reported as lost.
+        CommentStore::new(&video).save(&mut [], Fps::Known(24.0)).unwrap();
+        let (list, lost) = merge_reload(store.load().unwrap(), &[undo]);
+        assert!(lost);
+        assert!(list.is_empty());
         std::fs::remove_dir_all(dir).ok();
     }
 

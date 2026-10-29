@@ -362,14 +362,12 @@ impl Review {
         let Some(store) = &mut self.store else { return };
         let was_read_only = store.read_only();
         match store.load() {
-            Ok(mut list) => {
-                for ch in &self.pending {
-                    ch.apply(&mut list);
-                }
+            Ok(list) => {
+                let (list, lost) = model::merge_reload(list, &self.pending);
                 if was_read_only {
                     self.error = None;
                 }
-                if model::edits_lost(&self.pending, &list) {
+                if lost {
                     self.error = Some(tr("error.note_deleted_elsewhere"));
                 }
                 self.comments = list;
